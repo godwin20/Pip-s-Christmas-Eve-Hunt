@@ -4,7 +4,9 @@ A cute 3D Christmas game in the browser. Pip the penguin waddles around a new
 snowy island every night, pulling Christmas crackers for jokes and opening
 presents full of surprises before morning comes.
 
-## Play
+**Play it online:** https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/
+
+## Play locally
 
 ```bash
 npm install
@@ -41,7 +43,9 @@ Progress is saved in the browser (localStorage).
 
 ## Put it online
 
-The build is a plain static site with relative paths, so it runs from any web host or sub-folder.
+Every push to `main` rebuilds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Players see the update within about 10 minutes.
+
+The build is a plain static site with relative paths, so it also runs from any other web host or sub-folder.
 
 ```bash
 npm run zip
