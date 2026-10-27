@@ -1,7 +1,8 @@
 // Full-screen menus for Pip's Christmas Eve Hunt: Title, Results, Santa's
-// Workshop (Upgrades / Rewards / Wardrobe), Joke Gallery, Pause and Help.
-// Everything is plain DOM + CSS (see screens.css): a cosy storybook-scrapbook
-// look with washi tape, ribbon banners, candy stripes and CSS doodles of Pip.
+// Workshop (Upgrades / Rewards / Wardrobe), Joke Gallery, Leaderboard,
+// Privacy, Pause and Help. Everything is plain DOM + CSS (see screens.css): a
+// cosy storybook-scrapbook look with washi tape, ribbon banners, candy stripes
+// and CSS doodles of Pip.
 
 import './screens.css';
 import { JOKES, JOKE_COUNTS } from '../data/jokes.js';
@@ -10,6 +11,8 @@ import { UPGRADES, MAX_LEVEL, upgradeLevel, nextCost, buyUpgrade, computeStats }
 import { MILESTONES, getMilestone, isUnlocked, isActive, nextMilestone } from '../game/milestones.js';
 import { RARITY_COINS } from '../game/crackers.js';
 import { defaultSave } from '../core/save.js';
+import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
+import { PRIVACY_CONTACT } from '../cloud/config.js';
 
 // ---------------------------------------------------------------------------
 // Static data
@@ -81,6 +84,38 @@ const MENU_KEYS = new Set([
 const GALLERY_BACKS = new Set(['title', 'shop', 'pause', 'results']);
 const HELP_BACKS = new Set(['title', 'pause']);
 const SHOP_BACKS = new Set(['title', 'results']);
+const LEADERBOARD_BACKS = new Set(['title', 'results']);
+const PRIVACY_BACKS = new Set(['title', 'leaderboard']);
+
+// Used only if the cloud facade has no BOARDS of its own (docs/CLOUD.md).
+const DEFAULT_BOARDS = [
+  { id: 'bestNight', label: 'Best Night', icon: '🌙', unit: 'presents' },
+  { id: 'totalPresents', label: 'All Presents', icon: '🎁', unit: 'presents' },
+  { id: 'jokesFound', label: 'Jokes Found', icon: '🎉', unit: 'jokes' },
+];
+const BOARD_BLURBS = {
+  bestNight: 'Most presents opened in one night',
+  totalPresents: 'Every present opened, all nights added up',
+  jokesFound: 'Different jokes found in crackers',
+};
+const BOARD_TONES = ['red', 'gold', 'green'];
+const MEDALS = ['🥇', '🥈', '🥉'];
+const BOARD_LIMIT = 25;
+const CLOUD_TIMEOUT_MS = 10000; // a spinner turns into "try again" after this
+const BOARD_CACHE_MS = 30000; // tab hopping re-reads nothing for a while (Firestore reads cost)
+const PROFILE_RELOAD_MS = 1500; // the leaderboard write follows the name change's push
+const BOARD_RECHECK_MS = 7000; // the cloud spaces leaderboard writes 6 s apart
+const DELETE_TIMEOUT_MS = 20000; // deleting is several round trips (docs, account, a new guest)
+const GATE_OPEN_MS = 10 * 60 * 1000; // a passed grown-ups question holds this long in this tab
+const GATE_STORE_KEY = 'pips-hunt-gate-until'; // sessionStorage: this tab only
+const LINKED_TEXT = 'All set! Your progress now follows your Google account. ✨';
+const SWITCHED_TEXT = "Welcome back! We found your saved progress and added this device's progress to it. ✨";
+const DELETED_TEXT = 'All deleted. This device starts fresh with a new snow name.';
+// deleteEverything() answers accountDeleted: false when Firebase wanted a fresh
+// Google sign-in before removing it (and signed out instead)
+const DELETED_KEPT_TEXT = 'Your saved data is deleted and this device starts fresh. To remove the Google sign-in too, sign in again and delete straight away.';
+const IN_APP_TEXT = 'To sign in with Google, open this game in Safari or Chrome.';
+const SAFARI_GUEST_TEXT = "On iPhone and iPad, Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.";
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers
@@ -389,6 +424,188 @@ function backText(joke) {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud helpers (docs/CLOUD.md). Pure, so odd facade answers can't break a menu.
+// ---------------------------------------------------------------------------
+
+// Kid-friendly words for the cloud status, shared by the title chip and the
+// leaderboard's account card. (Guests get their "Sign in" nudge from the
+// sign-in strip next to the chip.)
+function cloudInfo(status) {
+  const s = status && typeof status === 'object' ? status : {};
+  switch (s.state) {
+    case 'connecting':
+      return { tone: 'busy', text: 'Finding the cloud…' };
+    case 'syncing':
+      return { tone: 'busy', text: 'Saving…' };
+    case 'synced':
+      return { tone: 'ok', text: 'Saved to the cloud ☁️' };
+    case 'offline':
+      return { tone: 'warn', text: 'Offline: saved on this device' };
+    case 'error':
+      return { tone: 'warn', text: 'Cloud hiccup: saved on this device' };
+    default:
+      return { tone: 'off', text: 'Saved on this device' };
+  }
+}
+
+// Which account view to show: 'checking', 'guest' or 'google:<name>'. The views
+// only rebuild when this changes, so "Saving…" ↔ "Saved" flips never touch
+// their buttons (or the focus). Before the first sync the facade still reports
+// its default isAnonymous: true, so a returning Google player would see a
+// "Sign in" button flash up at boot without the 'checking' step.
+function accountSig(status) {
+  const s = status && typeof status === 'object' ? status : {};
+  if (s.isAnonymous === false) return `google:${typeof s.accountName === 'string' ? s.accountName : ''}`;
+  if (!s.lastSyncedAt && (s.state === 'off' || s.state === 'connecting')) return 'checking';
+  return 'guest';
+}
+
+function accountName(status) {
+  const n = status && typeof status.accountName === 'string' ? status.accountName.trim() : '';
+  return n || null;
+}
+
+// Firebase errors reach us as codes ('auth/popup-blocked'), Error objects or
+// plain strings, depending on where the facade caught them.
+function errorText(err) {
+  if (!err) return '';
+  if (typeof err === 'string') return err;
+  try {
+    return String(err.code || err.message || err.name || '');
+  } catch {
+    return '';
+  }
+}
+
+// Closing the Google popup is a change of mind, not a failure.
+function isCancelled(res) {
+  if (res && (res.cancelled || res.canceled || res.reason === 'cancelled')) return true;
+  return /cancel|closed-by-user|popup-closed/i.test(errorText(res && res.error));
+}
+
+function looksOffline(err) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  return /offline|network|unavailable|deadline/i.test(errorText(err));
+}
+
+// The facade answers 'not-ready' when a tap beat the SDK (docs/CLOUD.md).
+function isNotReady(err, reason) {
+  return reason === 'not-ready' || /not-ready/i.test(errorText(err));
+}
+
+// A failed sign-in comes sorted by `reason` ('blocked', 'setup', 'offline',
+// 'not-ready', 'failed') with the Firebase code kept in `error`; either one
+// picks the words.
+function linkErrorText(err, reason) {
+  const code = errorText(err);
+  if (reason === 'blocked' || /popup-blocked/i.test(code)) return 'Your browser blocked the Google window. Tap the button again.';
+  // a setup slip on the owner's side (Firebase's authorised domains), not the player's
+  if (/unauthorized-domain/i.test(code)) return "Google sign-in isn't set up for this web address yet. The game's owner can add it in Firebase.";
+  // a web view the user-agent check missed
+  if (/operation-not-supported-in-this-environment|web-storage-unsupported/i.test(code)) return IN_APP_TEXT;
+  if (reason === 'offline' || looksOffline(err)) return "You're offline right now. Please try again when the internet is back.";
+  if (reason === 'setup' || /operation-not-allowed|no-cloud|cloud-off/i.test(code)) return "Google sign-in isn't switched on for this copy of the game yet.";
+  if (isNotReady(err, reason)) return 'One moment… then tap the button again.';
+  return "Sign-in didn't work this time. Please try again.";
+}
+
+function deleteErrorText(err, timedOut) {
+  if (timedOut) return 'Deleting is taking too long. Please check the internet and try again.';
+  if (looksOffline(err)) return "You're offline right now. Please try again when the internet is back.";
+  if (isNotReady(err)) return 'One moment… then try again.';
+  return "Couldn't delete just now. Please try again.";
+}
+
+// Google refuses sign-in inside apps' own browsers (Instagram, Facebook,
+// TikTok, Snapchat, Line, X/Twitter) and in Android WebViews ('; wv)'), so
+// those get a "use Safari or Chrome" note instead of a button that can't work.
+function isInAppBrowser(ua) {
+  const s = typeof ua === 'string' ? ua : '';
+  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|FB4A|Snapchat|Twitter|\bLine\//.test(s) || /TikTok|musical_ly|Bytedance/i.test(s) || /\bAndroid\b.*;\s*wv\)/.test(s);
+}
+
+function userAgent() {
+  try {
+    return typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
+  } catch {
+    return '';
+  }
+}
+
+// "For grown-ups: what is 47 × 6?": a 2-digit times a 1-digit number. The
+// give-aways (×1, ×2, 20 × 7, 33 × 3…) are left out, and a new question
+// never repeats the last one.
+function gateQuestion(prev, random = Math.random) {
+  for (let k = 0; k < 30; k++) {
+    const a = 12 + Math.floor(random() * 88); // 12..99
+    const b = 3 + Math.floor(random() * 7); // 3..9
+    if (a % 10 === 0 || a % 11 === 0) continue;
+    if (prev && prev.a === a && prev.b === b) continue;
+    return { a, b };
+  }
+  return prev && prev.a === 47 ? { a: 38, b: 7 } : { a: 47, b: 6 };
+}
+
+// The typed answer as a whole number, or null if it isn't one.
+function gateAnswer(text) {
+  const s = String(text == null ? '' : text).replace(/\s+/g, '');
+  return /^\d{1,4}$/.test(s) ? Number(s) : null;
+}
+
+// PRIVACY_CONTACT (src/cloud/config.js): a web page opens in a new tab and an
+// email address becomes a mailto: link. Anything else shows as plain text.
+function contactLink(raw) {
+  const s = typeof raw === 'string' ? raw.trim() : '';
+  if (!s) return null;
+  if (/^https?:\/\/\S+$/i.test(s)) return { href: s, text: s.replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, ''), external: true };
+  const mail = s.replace(/^mailto:/i, '');
+  if (/^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/.test(mail)) return { href: `mailto:${mail}`, text: mail, external: false };
+  return { href: null, text: s, external: false };
+}
+
+// getLeaderboard() answers { entries: [{ rank, name, score, isMe }], me, error? }.
+// Rows are tidied rather than trusted, and an answer without entries is an error.
+function normaliseBoard(res) {
+  const src = res && typeof res === 'object' ? res : {};
+  const whole = (v) => (Number.isFinite(Number(v)) ? Math.max(0, Math.floor(Number(v))) : 0);
+  const entries = [];
+  for (const e of Array.isArray(src.entries) ? src.entries : []) {
+    if (!e || typeof e !== 'object') continue;
+    entries.push({
+      rank: whole(e.rank) || entries.length + 1,
+      name: typeof e.name === 'string' && e.name.trim() ? e.name.trim() : 'Mystery Penguin',
+      score: whole(e.score),
+      isMe: e.isMe === true,
+    });
+  }
+  const me = src.me && typeof src.me === 'object' && whole(src.me.rank) > 0 ? { rank: whole(src.me.rank), score: whole(src.me.score) } : null;
+  return { entries, me, error: src.error || (Array.isArray(src.entries) ? null : 'no-entries') };
+}
+
+// What the board shows right now. The player's own row follows their local
+// snow name at once (the cloud copy catches up after the next sync), and it
+// leaves the list as soon as they hide.
+function boardView(data, profile) {
+  const entries = data && Array.isArray(data.entries) ? data.entries : [];
+  if (profile && profile.hidden) {
+    const mine = entries.find((e) => e.isMe);
+    const others = entries.filter((e) => !e.isMe);
+    return { hidden: true, me: null, entries: mine ? others.map((e) => (e.rank > mine.rank ? { ...e, rank: e.rank - 1 } : e)) : others };
+  }
+  const name = isValidNameParts(profile) ? nameFromParts(profile) : null;
+  return {
+    hidden: false,
+    me: data && data.me ? data.me : null,
+    entries: name ? entries.map((e) => (e.isMe ? { ...e, name } : e)) : entries,
+  };
+}
+
+function unitWords(unit) {
+  const many = typeof unit === 'string' && unit ? unit : 'points';
+  return { many, one: many.endsWith('s') ? many.slice(0, -1) : many };
+}
+
+// ---------------------------------------------------------------------------
 // CSS doodles (static markup)
 // ---------------------------------------------------------------------------
 
@@ -516,8 +733,26 @@ export function createScreens(root, deps = {}) {
     shopBack: 'title',
     shopTab: 'upgrades',
     shop: null, // { panel, purseNum, purse, tabs }
+    leaderboardBack: 'title',
+    board: null, // id of the leaderboard tab last shown
+    boardCache: new Map(), // board id -> { data, at }
+    lb: null, // refs + async bookkeeping of the open leaderboard screen
+    // Google sign-in / sign-out outlive a screen (the popup can finish after
+    // the title was rebuilt, or on the leaderboard), so they live here.
+    // op: { kind: 'link' | 'signout' | 'delete', token, slow } | null
+    // note: { tone: 'ok' | 'info' | 'error', text, visit } | null
+    auth: { op: null, seq: 0, note: null },
+    visit: 0, // bumped when the player opens a screen, not when refresh() rebuilds it
+    spareName: null, // shown if the save has no snow name yet (main.js gives one at boot)
     lastSummary: null,
     confirmReset: false,
+    privacyBack: 'title',
+    privacy: null, // refs of the open privacy screen
+    confirmDelete: false, // "Delete my saved data?" is up (privacy screen or account card)
+    // The grown-ups question in front of Google sign-in, on the screen (and
+    // visit) that asked: { at, visit, a, b, value, passed, msg } | null
+    gate: null,
+    gateUntil: 0, // Date.now() until which a passed question lets taps go straight to Google
     fallbackSave: defaultSave(),
   };
 
@@ -585,6 +820,91 @@ export function createScreens(root, deps = {}) {
     }
     if (fallback && gen === state.gen) fallback();
   };
+  // ---- cloud facade (docs/CLOUD.md): optional, and every call is guarded ----
+  const cloud = () => {
+    try {
+      const c = deps.cloud;
+      return c && typeof c === 'object' && c.enabled ? c : null;
+    } catch {
+      return null;
+    }
+  };
+  const cloudStatus = () => {
+    try {
+      const s = cloud()?.status;
+      return s && typeof s === 'object' ? s : {};
+    } catch {
+      return {};
+    }
+  };
+  const hasCloudMethod = (name) => {
+    try {
+      return typeof cloud()?.[name] === 'function';
+    } catch {
+      return false;
+    }
+  };
+  // Resolves with the method's result object, or { ok: false, error } when it
+  // is missing, throws or rejects. Never rejects.
+  const cloudCall = (name, ...args) => {
+    const c = cloud();
+    if (!hasCloudMethod(name)) return Promise.resolve({ ok: false, error: 'no-cloud' });
+    try {
+      return Promise.resolve(c[name](...args)).then(
+        (res) => (res && typeof res === 'object' ? res : { ok: res !== false }),
+        (err) => {
+          console.warn(`[screens] cloud.${name} failed`, err);
+          return { ok: false, error: err };
+        }
+      );
+    } catch (err) {
+      console.warn(`[screens] cloud.${name} failed`, err);
+      return Promise.resolve({ ok: false, error: err });
+    }
+  };
+  // Runs `fn` with a cloudCall result; a bug in `fn` is logged, never thrown.
+  const whenDone = (promise, fn) =>
+    promise.then((res) => {
+      try {
+        fn(res);
+      } catch (err) {
+        console.error('[screens] cloud result handling failed', err);
+      }
+    });
+  // accountSig(), except that 'checking' gives up after CLOUD_TIMEOUT_MS, so a
+  // cloud that never gets going can't hide the sign-in button for good.
+  const createdAt = Date.now();
+  const sigNow = (st = cloudStatus()) => {
+    const sig = accountSig(st);
+    return sig === 'checking' && Date.now() - createdAt >= CLOUD_TIMEOUT_MS ? 'guest' : sig;
+  };
+  // `ready` (docs/CLOUD.md Round 2): the SDK is loaded and the guest exists,
+  // so linkGoogle() can open its popup inside the tap. A facade from before
+  // it existed counts as ready.
+  const cloudReady = () => {
+    try {
+      const r = cloud()?.ready;
+      return typeof r === 'boolean' ? r : true;
+    } catch {
+      return false;
+    }
+  };
+  // Fixed for the page's life, so it is read once.
+  const IN_APP = isInAppBrowser(userAgent());
+  state.gateUntil = readGateUntil(); // a question answered before a reload of this tab still counts
+  const cloudBoards = () => {
+    let list = null;
+    try {
+      list = cloud()?.BOARDS;
+    } catch {
+      list = null;
+    }
+    const boards = (Array.isArray(list) ? list : [])
+      .filter((b) => b && typeof b.id === 'string' && b.id)
+      .map((b) => ({ id: b.id, label: String(b.label || b.id), icon: String(b.icon || '🏆'), unit: b.unit }));
+    return boards.length ? boards : DEFAULT_BOARDS;
+  };
+
   const goHomeFn = () => deps.onGoHome || deps.onEndNight || null;
   // Start / Next Night: remembers how many jokes were already found, so the
   // Gallery can tell which cards are new tonight.
@@ -614,6 +934,19 @@ export function createScreens(root, deps = {}) {
     for (const id of state.timers) clearTimeout(id);
     state.timers.clear();
     state.gen++;
+  }
+  // Timers of a sign-in / sign-out, which keep running across screen changes.
+  const authTimers = new Set();
+  function authLater(fn, ms) {
+    const id = setTimeout(() => {
+      authTimers.delete(id);
+      try {
+        fn();
+      } catch (err) {
+        console.error('[screens] sign-in timer failed', err);
+      }
+    }, ms);
+    authTimers.add(id);
   }
 
   // ---- root overlay ----
@@ -646,12 +979,18 @@ export function createScreens(root, deps = {}) {
     }
   }
 
-  function open(name, build) {
+  // `rebuild` is refresh() redrawing the same screen: notes that belong to
+  // this visit (see state.auth) stay on screen.
+  function open(name, build, { rebuild = false } = {}) {
     clearTimers();
     state.opens++;
+    if (!rebuild || state.current !== name) state.visit++;
     const wasHidden = state.current === null;
     state.current = name;
     state.shop = null;
+    state.lb = null;
+    state.privacy = null;
+    state.confirmDelete = false;
     if (name !== 'title') state.confirmReset = false;
     el.className = `scr scr--${name}${wasHidden ? ' scr--in' : ''}`;
     let content;
@@ -683,7 +1022,11 @@ export function createScreens(root, deps = {}) {
     const was = state.current;
     state.current = null;
     state.shop = null;
+    state.lb = null;
+    state.privacy = null;
     state.confirmReset = false;
+    state.confirmDelete = false;
+    state.gate = null;
     el.className = 'scr hidden';
     stage.replaceChildren();
     if (was !== null) {
@@ -740,9 +1083,12 @@ export function createScreens(root, deps = {}) {
   function goBack() {
     switch (state.current) {
       case 'title':
+        // Esc closes an open question; the title itself has nowhere to go back to
+        if (closeGate()) break;
         if (state.confirmReset) {
           state.confirmReset = false;
           renderResetArea();
+          focusEl(resetArea && resetArea.querySelector('[data-key="reset"]'));
         }
         break;
       case 'results':
@@ -760,6 +1106,29 @@ export function createScreens(root, deps = {}) {
       case 'help':
         play('click');
         leaveHelp();
+        break;
+      case 'leaderboard':
+        // like the title's reset confirm, Esc first closes an open question
+        // (grown-ups check, sign out, delete), then leaves
+        if (closeGate()) break;
+        if (state.lb && state.lb.confirmSignOut && !authBusy()) {
+          cancelSignOut();
+          break;
+        }
+        if (state.confirmDelete && !authBusy()) {
+          cancelDelete();
+          break;
+        }
+        play('click');
+        leaveLeaderboard();
+        break;
+      case 'privacy':
+        if (state.confirmDelete && !authBusy()) {
+          cancelDelete();
+          break;
+        }
+        play('click');
+        leavePrivacy();
         break;
       case 'pause':
         fire(deps.onResume, hideAll);
@@ -785,12 +1154,27 @@ export function createScreens(root, deps = {}) {
     if (state.helpBack === 'pause') showPause();
     else showTitle();
   }
+  function leaveLeaderboard() {
+    if (state.leaderboardBack === 'results' && state.lastSummary) renderResults(state.lastSummary, true);
+    else showTitle();
+  }
+  // Back on the screen that opened it, with focus on the link that did.
+  function leavePrivacy() {
+    if (state.privacyBack === 'leaderboard' && cloud()) {
+      openLeaderboard(state.leaderboardBack, { focus: 'privacy' });
+      return;
+    }
+    showTitle();
+    focusEl(stage.querySelector('[data-key="privacy"]'));
+  }
 
   // ---------------------------------------------------------------------------
   // Shared widgets
   // ---------------------------------------------------------------------------
 
-  function button(label, { icon, variant = 'red', size = '', autofocus = false, onClick, cls = '', aria } = {}) {
+  // `key` names the button for keepFocus(), so a re-rendered card can put
+  // focus back on "the same" button.
+  function button(label, { icon, variant = 'red', size = '', autofocus = false, onClick, cls = '', aria, key } = {}) {
     const b = h(
       'button',
       {
@@ -798,6 +1182,7 @@ export function createScreens(root, deps = {}) {
         class: `scr-btn scr-btn--${variant}${size ? ` scr-btn--${size}` : ''}${cls ? ` ${cls}` : ''}`,
         'data-autofocus': autofocus || null,
         'aria-label': aria || null,
+        'data-key': key || null,
       },
       icon ? h('span', { class: 'scr-btn__icon', 'aria-hidden': 'true' }, icon) : null,
       h('span', { class: 'scr-btn__label' }, label)
@@ -813,6 +1198,29 @@ export function createScreens(root, deps = {}) {
     if (l) l.textContent = text;
   }
 
+  function focusEl(node) {
+    if (!node || typeof node.focus !== 'function') return;
+    try {
+      node.focus({ preventScroll: true });
+    } catch {
+      node.focus();
+    }
+  }
+
+  // Runs `render` (which replaces what is inside `box`). If focus was inside,
+  // it goes back to the control with the same data-key, else to `fallback()`,
+  // so keyboard players never get dropped onto <body>.
+  function keepFocus(box, render, fallback) {
+    const doc = typeof document !== 'undefined' ? document : null;
+    const active = doc ? doc.activeElement : null;
+    const inside = !!(box && active && active !== box && box.contains(active));
+    const key = inside && active.getAttribute ? active.getAttribute('data-key') : null;
+    render();
+    if (!inside || box.contains(doc.activeElement)) return;
+    const same = key ? box.querySelector(`[data-key="${key}"]`) : null;
+    focusEl(same || (typeof fallback === 'function' ? fallback() : null));
+  }
+
   function settingsToggles(compact = false) {
     const save = getSave();
     return h(
@@ -823,7 +1231,7 @@ export function createScreens(root, deps = {}) {
         const icon = h('span', { class: 'scr-toggle__icon', 'aria-hidden': 'true' }, on ? s.icon : s.off);
         const t = h(
           'button',
-          { type: 'button', class: 'scr-toggle', 'aria-pressed': on ? 'true' : 'false', title: s.label },
+          { type: 'button', class: 'scr-toggle', 'aria-pressed': on ? 'true' : 'false', title: s.label, 'data-key': `toggle-${s.key}` },
           icon,
           h('span', { class: 'scr-toggle__label' }, s.label),
           h('span', { class: 'scr-toggle__sw', 'aria-hidden': 'true' }, h('i'))
@@ -960,6 +1368,8 @@ export function createScreens(root, deps = {}) {
   // ---------------------------------------------------------------------------
 
   let resetArea = null;
+  let cloudChip = null;
+  let titleAuth = null; // { box, live, key } of the title's sign-in strip
 
   function showTitle() {
     open('title', buildTitle);
@@ -994,6 +1404,7 @@ export function createScreens(root, deps = {}) {
     const found = countFound(save);
     const total = jokeTotal();
     const next = nextMilestone(save);
+    const hasCloud = !!cloud();
 
     const sparkles = h(
       'div',
@@ -1003,12 +1414,14 @@ export function createScreens(root, deps = {}) {
 
     const menu = h(
       'nav',
-      { class: 'scr-menu', 'aria-label': 'Main menu' },
+      { class: `scr-menu${hasCloud ? ' scr-menu--cloud' : ''}`, 'aria-label': 'Main menu' },
+      // keys let refresh() put focus back after a cloud merge rebuilds the title
       button('Start Night', {
         icon: '🌙',
         variant: 'red',
         size: 'big',
         autofocus: true,
+        key: 'start',
         onClick: () => {
           play('click');
           startNight();
@@ -1017,6 +1430,7 @@ export function createScreens(root, deps = {}) {
       button("Santa's Workshop", {
         icon: '🛠️',
         variant: 'green',
+        key: 'shop',
         onClick: () => {
           play('click');
           openShop('title');
@@ -1025,14 +1439,27 @@ export function createScreens(root, deps = {}) {
       button('Joke Gallery', {
         icon: '📖',
         variant: 'gold',
+        key: 'gallery',
         onClick: () => {
           play('click');
           openGallery('title');
         },
       }),
+      hasCloud
+        ? button('Leaderboard', {
+            icon: '🏆',
+            variant: 'blue',
+            key: 'leaderboard',
+            onClick: () => {
+              play('click');
+              openLeaderboard('title');
+            },
+          })
+        : null,
       button('How to Play', {
         icon: '❓',
         variant: 'snow',
+        key: 'help',
         onClick: () => {
           play('click');
           openHelp('title');
@@ -1085,9 +1512,27 @@ export function createScreens(root, deps = {}) {
     resetArea = h('div', { class: 'scr-reset' });
     renderResetArea();
 
+    // Tapping the chip opens the leaderboard at its "Play on any device" card.
+    cloudChip = hasCloud
+      ? h('button', {
+          type: 'button',
+          class: 'scr-cloudchip',
+          'data-key': 'cloudchip',
+          onclick: () => {
+            play('click');
+            openLeaderboard('title', { focus: 'account' });
+          },
+        })
+      : null;
+    renderCloudChip();
+
+    // Google sign-in is the main login, so guests see it right here.
+    titleAuth = hasCloud ? { box: h('div', { class: 'scr-titleauth', tabindex: '-1' }), live: h('p', { class: 'scr-sr', role: 'status' }), key: '' } : null;
+    renderTitleAuth();
+
     return h(
       'div',
-      { class: 'scr-title' },
+      { class: `scr-title${hasCloud ? ' scr-title--cloud' : ''}` },
       h('div', { class: 'scr-title__logo' }, sparkles, logo(), legend ? legendBadge() : null),
       h(
         'div',
@@ -1097,8 +1542,110 @@ export function createScreens(root, deps = {}) {
       ),
       settingsToggles(),
       ticket,
+      hasCloud ? h('div', { class: 'scr-cloudbar' }, cloudChip, titleAuth.box, titleAuth.live) : null,
       resetArea
     );
+  }
+
+  // Updates the chip's words in place: the button itself stays, so it keeps focus.
+  // Status updates that change nothing visible leave it alone (the dot's pulse
+  // would restart on every one).
+  function renderCloudChip() {
+    if (!cloudChip) return;
+    const info = cloudInfo(cloudStatus());
+    const shown = cloudChip.querySelector('.scr-cloudchip__text');
+    if (shown && shown.textContent === info.text && cloudChip.getAttribute('data-tone') === info.tone) return;
+    cloudChip.setAttribute('data-tone', info.tone);
+    cloudChip.replaceChildren(
+      h('span', { class: 'scr-sr' }, 'Cloud save: '),
+      h('span', { class: 'scr-clouddot', 'aria-hidden': 'true' }),
+      h('span', { class: 'scr-cloudchip__text' }, info.text)
+    );
+  }
+
+  // The title's sign-in strip: a big "Sign in with Google" for guests, or who
+  // is signed in. Status updates patch it in place, and only when what it
+  // shows changes, so a focused button stays put.
+  function renderTitleAuth() {
+    if (!titleAuth) return;
+    const sig = sigNow();
+    const op = state.auth.op;
+    const note = authNote();
+    const ready = cloudReady();
+    const offline = cloudStatus().state === 'offline';
+    const busyOp = op && (op.kind === 'signout' || op.kind === 'delete') ? op : null;
+    const view = busyOp ? 'busy' : sig === 'checking' ? 'checking' : sig !== 'guest' ? 'google' : IN_APP ? 'inapp' : 'guest';
+    if (view !== 'guest' && gateHere('title')) state.gate = null; // signed in elsewhere meanwhile
+    const gate = gateHere('title');
+    const key = `${sig}|${op ? `${op.kind}:${op.token}:${op.slow}` : ''}|${note ? note.text : ''}|${ready}|${offline}|${gate ? gateSig(gate) : ''}`;
+    if (key === titleAuth.key) return;
+    titleAuth.key = key;
+    const box = titleAuth.box;
+    box.setAttribute('data-view', view === 'guest' && gate ? 'gate' : view);
+    let kids = [];
+    if (view === 'guest' && gate) {
+      kids = [gateForm(gate)];
+    } else if (view === 'guest') {
+      const linking = op && op.kind === 'link' ? op : null;
+      const line = linking
+        ? { tone: 'info', text: linking.slow ? 'Still waiting for Google. If the window closed, press Try again.' : 'A Google window should pop up. Finish signing in there.' }
+        : note || { tone: '', text: !ready && offline ? 'Sign-in needs the internet. Progress is saved on this device.' : 'Keep your progress safe and play on any device' };
+      kids = [
+        googleButton(linking, { key: 'title-link', where: 'title' }),
+        h('p', { class: 'scr-titleauth__line', 'data-tone': line.tone || null }, line.text),
+      ];
+    } else if (view === 'inapp') {
+      // Google refuses sign-in in here, so say where it works instead
+      kids = [
+        h('p', { class: 'scr-titleauth__line' }, h('span', { 'aria-hidden': 'true' }, '🧭 '), IN_APP_TEXT),
+        note ? h('p', { class: 'scr-titleauth__line', 'data-tone': note.tone }, note.text) : null,
+      ];
+    } else if (view === 'google') {
+      const who = accountName(cloudStatus());
+      kids = [
+        h(
+          'p',
+          { class: 'scr-titleauth__who' },
+          h('span', { class: 'scr-titleauth__name' }, who ? ['Signed in as ', h('b', null, who)] : 'Signed in with Google'),
+          h('span', { class: 'scr-titleauth__tick', 'aria-hidden': 'true' }, '✓')
+        ),
+        note ? h('p', { class: 'scr-titleauth__line', 'data-tone': note.tone }, note.text) : null,
+      ];
+    } else if (view === 'busy') {
+      kids = [h('p', { class: 'scr-titleauth__line', 'data-tone': 'info' }, busyOp.kind === 'delete' ? 'Deleting your saved data…' : 'Signing out…')];
+    }
+    keepFocus(box, () => box.replaceChildren(...kids.filter(Boolean)), () => box.querySelector('button') || (view === 'checking' ? cloudChip : box));
+    if (view === 'checking') whenCheckingEnds(renderTitleAuth);
+  }
+
+  // Redraws an account view once 'checking' has timed out (see sigNow).
+  function whenCheckingEnds(fn) {
+    later(fn, Math.max(0, createdAt + CLOUD_TIMEOUT_MS - Date.now()) + 20);
+  }
+
+  // "Sign in with Google", shared by the title strip and the leaderboard's
+  // account card. `linking` is the running sign-in, if any: while the popup
+  // is open the button waits, and after CLOUD_TIMEOUT_MS it offers a retry.
+  // Until the cloud is ready it waits too ("One moment…"): a tap before then
+  // couldn't open Google's window in Safari. `where` is the screen it is on.
+  function googleButton(linking, { key, where } = {}) {
+    const busy = !!linking && !linking.slow;
+    const waiting = !busy && !cloudReady();
+    const label = busy ? 'Waiting for Google…' : waiting ? 'One moment…' : linking || hasAuthError() ? 'Try again' : 'Sign in with Google';
+    const btn = button(label, {
+      icon: busy ? '❄' : 'G',
+      variant: 'snow',
+      key,
+      cls: `scr-gbtn${busy ? ' is-busy' : ''}${waiting ? ' is-waiting' : ''}`,
+      onClick: () => signInTapped(where),
+    });
+    if (busy || waiting) btn.setAttribute('aria-disabled', 'true');
+    return btn;
+  }
+
+  function hasAuthError() {
+    const n = authNote();
+    return !!n && n.tone === 'error';
   }
 
   function legendBadge() {
@@ -1110,22 +1657,49 @@ export function createScreens(root, deps = {}) {
     );
   }
 
+  // "Reset progress" and "Privacy" share one line, so the title is no taller
+  // than before. Privacy is always there: its note covers this device's save
+  // too.
   function renderResetArea() {
     if (!resetArea) return;
     if (!state.confirmReset) {
       resetArea.replaceChildren(
         h(
-          'button',
-          {
-            type: 'button',
-            class: 'scr-link',
-            onclick: () => {
-              play('click');
-              state.confirmReset = true;
-              renderResetArea();
+          'div',
+          { class: 'scr-reset__links' },
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'scr-link',
+              'data-key': 'reset',
+              onclick: () => {
+                play('click');
+                state.confirmReset = true;
+                // one question at a time on the title
+                if (gateHere('title')) {
+                  state.gate = null;
+                  renderTitleAuth();
+                }
+                renderResetArea();
+              },
             },
-          },
-          '🧹 Reset progress'
+            '🧹 Reset progress'
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'scr-link',
+              'data-key': 'privacy',
+              onclick: () => {
+                play('click');
+                openPrivacy('title');
+              },
+            },
+            h('span', { 'aria-hidden': 'true' }, '🔒'),
+            ' Privacy'
+          )
         )
       );
       return;
@@ -1133,6 +1707,7 @@ export function createScreens(root, deps = {}) {
     const no = button('Oops, no!', {
       variant: 'green',
       size: 'small',
+      key: 'reset-no',
       onClick: () => {
         play('click');
         state.confirmReset = false;
@@ -1143,6 +1718,7 @@ export function createScreens(root, deps = {}) {
       icon: '🧹',
       variant: 'red',
       size: 'small',
+      key: 'reset-yes',
       onClick: () => {
         state.confirmReset = false;
         state.nightFoundStart = null;
@@ -1228,6 +1804,7 @@ export function createScreens(root, deps = {}) {
 
   function buildResults(s, instant) {
     const save = getSave();
+    const hasCloud = !!cloud();
     const tiles = [];
     const tile = (icon, label, value, cls, format = fmt, extra = null) => {
       const num = h('span', { class: 'scr-tile__num' }, format(instant ? value : 0));
@@ -1427,6 +2004,16 @@ export function createScreens(root, deps = {}) {
           startNight();
         },
       }),
+      hasCloud
+        ? button('Leaderboard', {
+            icon: '🏆',
+            variant: 'blue',
+            onClick: () => {
+              play('click');
+              openLeaderboard('results');
+            },
+          })
+        : null,
       button('Title', {
         icon: '🏠',
         variant: 'snow',
@@ -1445,7 +2032,8 @@ export function createScreens(root, deps = {}) {
 
     const result = page(
       {
-        cls: 'scr-results',
+        // a fourth footer button: see .scr-results--cloud in screens.css
+        cls: `scr-results${hasCloud ? ' scr-results--cloud' : ''}`,
         title: s.endedEarly ? 'Home early!' : 'Christmas Eve is over!',
         icon: s.endedEarly ? '🏠' : '🌙',
         sub: resultsLine(s),
@@ -2085,6 +2673,1298 @@ export function createScreens(root, deps = {}) {
   }
 
   // ---------------------------------------------------------------------------
+  // LEADERBOARD: snow names, cloud saves and Google sign-in (docs/CLOUD.md)
+  // ---------------------------------------------------------------------------
+  // Everything here waits on the network, so every answer is checked against
+  // the screen that asked for it (open() replaces state.lb), no spinner
+  // outlives CLOUD_TIMEOUT_MS, and cloud updates patch the open screen in
+  // place instead of rebuilding it.
+
+  let lbUid = 0; // unique ids for aria-controls / aria-labelledby
+
+  function showLeaderboard(back) {
+    openLeaderboard(back);
+  }
+
+  function openLeaderboard(back, { focus = null } = {}) {
+    state.leaderboardBack = LEADERBOARD_BACKS.has(back) ? back : 'title';
+    if (state.leaderboardBack === 'results' && !state.lastSummary) state.leaderboardBack = 'title';
+    if (!cloud()) {
+      // no cloud, no leaderboard: land where Back would have gone
+      leaveLeaderboard();
+      return;
+    }
+    open('leaderboard', buildLeaderboard);
+    loadBoard();
+    if (focus === 'account') focusAccountCard();
+    else if (focus === 'privacy') focusAccountLink('privacy');
+  }
+
+  function currentBoard(lb) {
+    return lb.boards.find((b) => b.id === lb.board) || lb.boards[0];
+  }
+
+  function selectedTab(lb) {
+    const i = lb.boards.findIndex((b) => b.id === lb.board);
+    return lb.tabEls[i < 0 ? 0 : i] || null;
+  }
+
+  function buildLeaderboard() {
+    const boards = cloudBoards();
+    if (!boards.some((b) => b.id === state.board)) state.board = boards[0].id;
+    const lb = {
+      uid: ++lbUid,
+      boards,
+      board: state.board,
+      seq: 0, // bumped by every board load, so older answers are dropped
+      pending: 0, // seq of the load still waiting for its answer
+      view: 'loading', // 'loading' | 'error' | 'data'
+      data: null,
+      error: null,
+      reload: null, // timer of the debounced quiet reload
+      recheck: 1, // extra reloads allowed while the board is behind this device (see recheckBoard)
+      picked: null, // the snow name just chosen, until setProfile answers
+      confirmSignOut: false,
+      sig: '', // sigNow() the account card was drawn for
+      ready: null, // cloudReady() the account card was drawn for
+      tabEls: [],
+    };
+    state.lb = lb;
+
+    const panelId = `scr-lb-panel-${lb.uid}`;
+    const tabs = h('div', { class: 'scr-tabs', role: 'tablist', 'aria-label': 'Leaderboards' });
+    lb.tabEls = boards.map((b, i) => {
+      const on = b.id === lb.board;
+      const t = h(
+        'button',
+        {
+          type: 'button',
+          class: 'scr-tab',
+          role: 'tab',
+          id: `scr-lb-tab-${lb.uid}-${i}`,
+          'data-tone': BOARD_TONES[i % BOARD_TONES.length],
+          'aria-controls': panelId,
+          'aria-selected': on ? 'true' : 'false',
+          tabindex: on ? '0' : '-1',
+          'data-autofocus': on || null,
+        },
+        h('span', { 'aria-hidden': 'true' }, b.icon),
+        ` ${b.label}`
+      );
+      t.addEventListener('click', () => selectBoard(i));
+      tabs.appendChild(t);
+      return t;
+    });
+    tabs.addEventListener('keydown', (e) => {
+      const n = boards.length;
+      const i = Math.max(0, boards.findIndex((b) => b.id === lb.board));
+      const to = { ArrowRight: (i + 1) % n, ArrowLeft: (i - 1 + n) % n, Home: 0, End: n - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      selectBoard(to);
+      focusEl(lb.tabEls[to]);
+    });
+
+    lb.heading = h('h3', { class: 'scr-lb__heading' });
+    lb.panel = h('div', { class: 'scr-lb__board', role: 'tabpanel', id: panelId, 'aria-labelledby': selectedTab(lb).id });
+    lb.live = h('p', { class: 'scr-sr', role: 'status' });
+    renderBoardHeading();
+    renderBoardPanel();
+
+    const body = h(
+      'div',
+      { class: 'scr-lb' },
+      h('div', { class: 'scr-lb__main' }, lb.heading, lb.panel, lb.live),
+      h('div', { class: 'scr-lb__side' }, buildNameCard(lb), buildAccountCard(lb))
+    );
+
+    const foot = [
+      button(state.leaderboardBack === 'results' ? 'Results' : 'Title', {
+        icon: '↩',
+        variant: 'red',
+        onClick: () => {
+          play('click');
+          leaveLeaderboard();
+        },
+      }),
+    ];
+
+    return page(
+      { cls: 'scr-lbbook', title: 'Leaderboard', icon: '🏆', sub: 'Who has found the most Christmas cheer?', headExtra: tabs },
+      body,
+      foot
+    );
+  }
+
+  function selectBoard(i) {
+    const lb = state.lb;
+    const b = lb && lb.boards[i];
+    if (!b || b.id === lb.board) return;
+    play('click');
+    lb.board = b.id;
+    state.board = b.id;
+    lb.tabEls.forEach((t, k) => {
+      t.setAttribute('aria-selected', k === i ? 'true' : 'false');
+      t.tabIndex = k === i ? 0 : -1;
+    });
+    lb.panel.setAttribute('aria-labelledby', lb.tabEls[i].id);
+    renderBoardHeading();
+    loadBoard();
+    scrollBodyTop(lb.panel);
+  }
+
+  function renderBoardHeading() {
+    const lb = state.lb;
+    if (!lb || !lb.heading) return;
+    const b = currentBoard(lb);
+    lb.heading.replaceChildren(
+      ...[
+        h('span', { class: 'scr-lb__icon', 'aria-hidden': 'true' }, b.icon),
+        h('span', null, b.label),
+        BOARD_BLURBS[b.id] ? h('small', null, BOARD_BLURBS[b.id]) : null,
+      ].filter(Boolean)
+    );
+  }
+
+  // Fetches the selected board. `quiet` keeps what is showing (a list, or the
+  // error with its focused "Try again") until the answer, and keeps a list if
+  // the refresh fails; `force` skips the cache. A late answer still lands if
+  // nothing newer was asked, even after the timeout has offered "Try again".
+  function loadBoard({ force = false, quiet = false } = {}) {
+    const lb = state.lb;
+    if (!lb) return;
+    const board = lb.board;
+    const token = ++lb.seq;
+    const key = boardCacheKey();
+    const cached = state.boardCache.get(board);
+    if (!force && cached && cached.key === key && Date.now() - cached.at < BOARD_CACHE_MS) {
+      lb.pending = 0;
+      showBoardData(lb, cached.data, true);
+      return;
+    }
+    lb.pending = token;
+    if (!quiet || lb.view === 'loading') {
+      lb.view = 'loading';
+      lb.data = null;
+      renderBoardPanel();
+    }
+    const apply = (res, timedOut) => {
+      if (state.lb !== lb || lb.seq !== token) return; // left the screen, or a newer load
+      if (timedOut && lb.pending !== token) return; // answered in time
+      if (!timedOut) lb.pending = 0;
+      const data = normaliseBoard(res);
+      if (data.error && !data.entries.length) {
+        if (quiet && lb.view === 'data') return;
+        lb.view = 'error';
+        lb.error = data.error;
+        lb.data = null;
+        renderBoardPanel();
+        return;
+      }
+      state.boardCache.set(board, { data, at: Date.now(), key });
+      showBoardData(lb, data, !quiet);
+      recheckBoard(lb, board, data);
+    };
+    later(() => apply({ error: 'timeout' }, true), CLOUD_TIMEOUT_MS);
+    whenDone(cloudCall('getLeaderboard', board, { limit: BOARD_LIMIT }), (res) => apply(res, false));
+  }
+
+  function showBoardData(lb, data, animate) {
+    lb.view = 'data';
+    lb.data = data;
+    lb.error = null;
+    renderBoardPanel(animate);
+  }
+
+  // A cached board is only reused while this device's scores, snow name and
+  // account are what they were when it was read (a night just ended, say).
+  function boardCacheKey() {
+    const save = getSave();
+    const p = save.profile || {};
+    return [sigNow(), save.bestPresentsInNight, save.totalPresents, countFound(save), p.adj, p.noun, p.num, !!p.hidden].join('|');
+  }
+
+  // The board can lag this device for a few seconds: the night's push (or a
+  // name change, or "Show me" switched back on) is followed by a board write
+  // the cloud may space out. If the player's place shows less than they have,
+  // look once more a little later.
+  function recheckBoard(lb, board, data) {
+    if (lb.recheck <= 0) return;
+    const save = getSave();
+    const local = localScore(board, save);
+    const mine = data.entries.find((e) => e.isMe);
+    const shown = mine ? mine.score : data.me ? data.me.score : 0;
+    if ((save.profile && save.profile.hidden) || local <= 0 || shown >= local) return;
+    lb.recheck--;
+    scheduleBoardReload(lb, BOARD_RECHECK_MS);
+  }
+
+  function localScore(board, save) {
+    const n = { bestNight: save.bestPresentsInNight, totalPresents: save.totalPresents, jokesFound: countFound(save) }[board];
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  // Coalesces bursts (name taps, sync updates) into one quiet re-read.
+  function scheduleBoardReload(lb, ms) {
+    if (lb.reload !== null) {
+      clearTimeout(lb.reload);
+      state.timers.delete(lb.reload);
+    }
+    lb.reload = later(() => {
+      lb.reload = null;
+      if (state.lb === lb) loadBoard({ force: true, quiet: true });
+    }, ms);
+  }
+
+  // `animate` replays the rows' rise-in; a quiet refresh or a name change
+  // just swaps the rows.
+  function renderBoardPanel(animate = true) {
+    const lb = state.lb;
+    if (!lb || !lb.panel) return;
+    const board = currentBoard(lb);
+    const { node, said } = lb.view === 'loading' ? boardLoading(board) : lb.view === 'error' ? boardError(lb) : boardList(lb, board, animate);
+    lb.panel.setAttribute('aria-busy', lb.view === 'loading' ? 'true' : 'false');
+    keepFocus(lb.panel, () => lb.panel.replaceChildren(node), () => selectedTab(lb));
+    if (lb.live.textContent !== said) lb.live.textContent = said;
+  }
+
+  function boardLoading(board) {
+    return {
+      said: 'Loading the leaderboard…',
+      node: h(
+        'div',
+        { class: 'scr-lb__state' },
+        h('span', { class: 'scr-lb__flake', 'aria-hidden': 'true' }, '❄'),
+        h('p', { class: 'scr-lb__small' }, `Counting everyone's ${board.unit === 'jokes' ? 'jokes' : 'presents'}…`),
+        h(
+          'ol',
+          { class: 'scr-lb__list', 'aria-hidden': 'true' },
+          [0, 1, 2].map((k) => h('li', { class: 'scr-lbrow is-ghost', style: { '--i': String(k) } }))
+        )
+      ),
+    };
+  }
+
+  function boardError(lb) {
+    const offline = cloudStatus().state === 'offline' || looksOffline(lb.error);
+    const title = offline
+      ? "You're offline right now."
+      : lb.error === 'timeout'
+        ? 'The cloud is taking a long nap.'
+        : 'The leaderboard got stuck in a snowdrift.';
+    return {
+      said: `${title} Your progress is safe on this device.`,
+      node: h(
+        'div',
+        { class: 'scr-lb__state' },
+        h('div', { class: 'scr-lb__pip', 'aria-hidden': 'true', html: pipHTML({ sleepy: true }) }),
+        h('p', { class: 'scr-lb__big' }, title),
+        h('p', { class: 'scr-lb__small' }, 'Your progress is safe on this device.'),
+        button('Try again', {
+          icon: '🔄',
+          variant: 'green',
+          size: 'small',
+          key: 'retry',
+          onClick: () => {
+            play('click');
+            loadBoard({ force: true });
+          },
+        })
+      ),
+    };
+  }
+
+  function boardList(lb, board, animate) {
+    const save = getSave();
+    const view = boardView(lb.data, lb.picked || save.profile);
+    const unit = unitWords(board.unit);
+    const mine = view.entries.some((e) => e.isMe);
+    const hint = mine || view.me ? null : boardHint(board, view, save);
+    if (!view.entries.length) {
+      return {
+        said: `Nobody is on the ${board.label} board yet. Be the first on the board!`,
+        node: h(
+          'div',
+          { class: 'scr-lb__state' },
+          h('div', { class: 'scr-lb__pip', 'aria-hidden': 'true', html: pipHTML({ wave: true, crown: true }) }),
+          h('p', { class: 'scr-lb__big' }, 'Be the first on the board!'),
+          hint ? h('p', { class: 'scr-lb__small' }, hint) : null
+        ),
+      };
+    }
+    const list = h(
+      'ol',
+      { class: `scr-lb__list${animate ? '' : ' is-still'}` },
+      view.entries.map((e, i) => boardRow(e, i, unit))
+    );
+    let after = hint ? h('p', { class: 'scr-lb__hint' }, hint) : null;
+    if (view.me && !mine) {
+      after = h(
+        'p',
+        { class: 'scr-lb__you' },
+        h('b', null, `You: #${fmt(view.me.rank)}`),
+        ` with ${plural(view.me.score, unit.one, unit.many)}. Keep hunting! 🐧`
+      );
+    }
+    const where = mine ? ' You are on it!' : view.me ? ` You are number ${view.me.rank}.` : '';
+    return { said: `${plural(view.entries.length, 'snow name')} on the ${board.label} board.${where}`, node: h('div', null, list, after) };
+  }
+
+  // Why the player isn't on this board, in words a kid can act on.
+  function boardHint(board, view, save) {
+    if (view.hidden) return 'You are hidden. Switch on "Show me on the leaderboard" to join in.';
+    if (localScore(board.id, save) > 0) return 'Your score is on its way to the board! ☁️';
+    return board.unit === 'jokes' ? 'Pull a cracker and find a joke to join in!' : 'Open a present to join in!';
+  }
+
+  function boardRow(e, i, unit) {
+    const medal = e.rank <= MEDALS.length ? MEDALS[e.rank - 1] : null;
+    return h(
+      'li',
+      {
+        class: `scr-lbrow${medal ? ` is-top${e.rank}` : ''}${e.isMe ? ' is-me' : ''}`,
+        style: { '--i': String(Math.min(i, 20)) },
+        'aria-current': e.isMe ? 'true' : null,
+      },
+      h(
+        'span',
+        { class: 'scr-lbrow__rank' },
+        h('span', { class: 'scr-sr' }, `Number ${e.rank}: `),
+        medal
+          ? h('span', { class: 'scr-lbrow__medal', 'aria-hidden': 'true' }, medal)
+          : h('span', { class: 'scr-lbrow__num', 'aria-hidden': 'true' }, `#${fmt(e.rank)}`)
+      ),
+      h(
+        'span',
+        { class: 'scr-lbrow__who' },
+        h('span', { class: 'scr-lbrow__name' }, e.name),
+        e.isMe ? h('span', { class: 'scr-lbrow__you' }, 'You!') : null
+      ),
+      h('span', { class: 'scr-lbrow__score' }, h('b', null, fmt(e.score)), h('small', null, Math.round(e.score) === 1 ? unit.one : unit.many))
+    );
+  }
+
+  // ---- "Your snow name" card ----
+
+  // The saved snow name, or a stand-in if the save has none yet.
+  function profileParts() {
+    const p = getSave().profile;
+    if (isValidNameParts(p)) return { adj: p.adj, noun: p.noun, num: p.num, hidden: !!p.hidden };
+    if (!state.spareName) state.spareName = randomNameParts();
+    return { ...state.spareName, hidden: !!(p && p.hidden) };
+  }
+
+  // What the card shows: a name just picked wins until setProfile answers.
+  function shownParts() {
+    return (state.lb && state.lb.picked) || profileParts();
+  }
+
+  function buildNameCard(lb) {
+    const id = (part) => `scr-lb-${part}-${lb.uid}`;
+    const name = h('b', { class: 'scr-lbname__name', 'aria-live': 'polite' });
+    const badge = h('div', { class: 'scr-lbname__badge' }, h('span', { class: 'scr-lbname__hello' }, 'Hello! My snow name is'), name);
+    const picker = (part, label, words) => {
+      const sel = h('select', { id: id(part) }, words.map((w, i) => h('option', { value: String(i) }, w)));
+      sel.addEventListener('change', () => {
+        const v = Number(sel.value);
+        if (!Number.isInteger(v)) return;
+        play('pop');
+        setNameParts({ [part]: v });
+      });
+      const field = h(
+        'label',
+        { class: 'scr-field', for: id(part) },
+        h('span', { class: 'scr-field__label' }, label),
+        h('span', { class: 'scr-select' }, sel)
+      );
+      return { sel, field };
+    };
+    const adj = picker('adj', 'First word', ADJECTIVES);
+    const noun = picker('noun', 'Second word', NOUNS);
+    const dice = button('New random name', { icon: '🎲', variant: 'gold', size: 'small', onClick: () => rollName() });
+    const show = h(
+      'button',
+      { type: 'button', class: 'scr-toggle scr-lbname__show', 'aria-pressed': 'true' },
+      h('span', { class: 'scr-toggle__icon', 'aria-hidden': 'true' }, '🏆'),
+      h('span', { class: 'scr-toggle__label' }, 'Show me on the leaderboard'),
+      h('span', { class: 'scr-toggle__sw', 'aria-hidden': 'true' }, h('i'))
+    );
+    show.addEventListener('click', () => {
+      const hidden = !shownParts().hidden;
+      play(hidden ? 'click' : 'pop');
+      setNameParts({ hidden });
+      restartAnim(show, 'is-boing');
+    });
+    const note = h('p', { class: 'scr-lbname__note' });
+    const card = h(
+      'section',
+      { class: 'scr-lbcard scr-tint--butter', 'aria-labelledby': id('name') },
+      h('span', { class: 'scr-note__pin', 'aria-hidden': 'true' }),
+      h('h3', { class: 'scr-lbcard__title', id: id('name') }, h('span', { 'aria-hidden': 'true' }, '🏷️'), ' Your snow name'),
+      badge,
+      h('div', { class: 'scr-lbname__pick' }, adj.field, noun.field),
+      h('div', { class: 'scr-lbname__actions' }, dice, show),
+      note
+    );
+    lb.name = { card, badge, name, adj: adj.sel, noun: noun.sel, show, note };
+    syncNameCard();
+    return card;
+  }
+
+  // Puts the snow name into the card without rebuilding it, so a select
+  // keeps focus while the player arrows through the words.
+  function syncNameCard(parts) {
+    const refs = state.lb && state.lb.name;
+    if (!refs) return;
+    const p = parts || shownParts();
+    const text = nameFromParts(p);
+    if (refs.name.textContent !== text) refs.name.textContent = text;
+    if (refs.adj.value !== String(p.adj)) refs.adj.value = String(p.adj);
+    if (refs.noun.value !== String(p.noun)) refs.noun.value = String(p.noun);
+    refs.show.setAttribute('aria-pressed', p.hidden ? 'false' : 'true');
+    refs.note.textContent = p.hidden ? "You're hidden, so only you can see your snow name." : 'Pick two words. Your number stays the same.';
+  }
+
+  // Every change sends the whole name, so a half-made profile is never saved.
+  function setNameParts(partial) {
+    const lb = state.lb;
+    if (!lb) return;
+    const p = { ...shownParts(), ...partial };
+    const profile = { adj: p.adj, noun: p.noun, num: p.num, hidden: !!p.hidden };
+    lb.picked = profile; // the board and the card follow at once, whether setProfile is sync or not
+    syncNameCard(profile);
+    if (hasCloudMethod('setProfile')) {
+      whenDone(cloudCall('setProfile', profile), () => nameSaved(lb));
+    } else {
+      // a facade without setProfile: keep the name on this device at least
+      const sv = getSave();
+      sv.profile = { ...(sv.profile && typeof sv.profile === 'object' ? sv.profile : {}), ...profile, setAt: Date.now() };
+      persist();
+      nameSaved(lb);
+    }
+    if (lb.view === 'data') renderBoardPanel(false);
+  }
+
+  // setProfile resolves once its push (and board write) is done.
+  function nameSaved(lb) {
+    if (state.lb !== lb) return;
+    lb.picked = null;
+    syncNameCard();
+    if (lb.view === 'data') renderBoardPanel(false);
+    state.boardCache.clear(); // the name shows on every board
+    lb.recheck = 1;
+    scheduleBoardReload(lb, PROFILE_RELOAD_MS);
+  }
+
+  // New words, same number: the number is the part of the name that tells two
+  // "Jolly Penguin"s apart, so it stays put like the note on the card says.
+  function rollName() {
+    const cur = shownParts();
+    let next = randomNameParts();
+    // a roll that lands on the same two words would look like a broken button
+    for (let k = 0; k < 5 && next.adj === cur.adj && next.noun === cur.noun; k++) next = randomNameParts();
+    play('pop');
+    setNameParts({ adj: next.adj, noun: next.noun });
+    const refs = state.lb && state.lb.name;
+    if (refs) {
+      restartAnim(refs.badge, 'is-boing');
+      burst(refs.card, 10);
+    }
+  }
+
+  // ---- "Play on any device" card (speaks to grown-ups) ----
+
+  function buildAccountCard(lb) {
+    const titleId = `scr-lb-acct-${lb.uid}`;
+    const status = h('p', { class: 'scr-lbacct__status' });
+    const body = h('div', { class: 'scr-lbacct__body' });
+    const live = h('p', { class: 'scr-sr', role: 'status' });
+    const card = h(
+      'section',
+      { class: 'scr-lbcard scr-lbcard--acct scr-tint--sky', 'aria-labelledby': titleId, tabindex: '-1' },
+      h('span', { class: 'scr-note__pin', 'aria-hidden': 'true' }),
+      h('h3', { class: 'scr-lbcard__title', id: titleId }, h('span', { 'aria-hidden': 'true' }, '📱'), ' Play on any device'),
+      status,
+      body,
+      live
+    );
+    lb.account = { card, status, body, live };
+    syncAccountStatus();
+    renderAccountBody();
+    return card;
+  }
+
+  function syncAccountStatus() {
+    const refs = state.lb && state.lb.account;
+    if (!refs) return;
+    const info = cloudInfo(cloudStatus());
+    if (refs.status.textContent === info.text && refs.status.getAttribute('data-tone') === info.tone) return;
+    refs.status.setAttribute('data-tone', info.tone);
+    refs.status.replaceChildren(h('span', { class: 'scr-clouddot', 'aria-hidden': 'true' }), h('span', null, info.text));
+  }
+
+  function renderAccountBody() {
+    const lb = state.lb;
+    const refs = lb && lb.account;
+    if (!refs) return;
+    const st = cloudStatus();
+    lb.sig = sigNow(st);
+    lb.ready = cloudReady();
+    // a sign-out in flight keeps its card until it answers, whatever the status says meanwhile
+    const op = state.auth.op;
+    const view = op && op.kind === 'signout' ? 'google' : lb.sig === 'checking' || lb.sig === 'guest' ? lb.sig : 'google';
+    // signed out elsewhere while the question was up: don't bring it back later
+    // (and don't make Esc close an invisible question first)
+    if (view !== 'google') lb.confirmSignOut = false;
+    if (view !== 'guest' && gateHere('leaderboard')) state.gate = null;
+    if (view === 'checking' && !(op && op.kind === 'delete')) state.confirmDelete = false;
+    const kids =
+      view === 'checking'
+        ? [h('p', null, 'Looking for your cloud save…'), op && op.kind === 'delete' ? accountLinks(lb) : null]
+        : view === 'guest'
+          ? guestView(lb)
+          : googleView(lb, st);
+    keepFocus(refs.body, () => refs.body.replaceChildren(...kids.filter(Boolean)), () => refs.body.querySelector('button') || refs.card);
+    if (view === 'checking') whenCheckingEnds(syncAccountCard);
+  }
+
+  // Redraws the account card only when what it shows changed.
+  function syncAccountCard() {
+    const lb = state.lb;
+    if (!lb || !lb.account) return;
+    syncAccountStatus();
+    if (sigNow() !== lb.sig || cloudReady() !== lb.ready) renderAccountBody();
+  }
+
+  function accountNote(note) {
+    return h('p', { class: 'scr-lbacct__note', 'data-tone': note.tone }, note.text);
+  }
+
+  function guestView(lb) {
+    const op = state.auth.op;
+    const linking = op && op.kind === 'link' ? op : null;
+    const gate = gateHere('leaderboard');
+    const note = linking
+      ? { tone: 'info', text: linking.slow ? 'Still waiting for the Google window. If it closed, press Try again.' : 'A Google window should pop up. Finish signing in there.' }
+      : authNote();
+    let signIn;
+    if (IN_APP) {
+      signIn = h(
+        'div',
+        { class: 'scr-lbacct__inapp' },
+        h('p', null, h('span', { 'aria-hidden': 'true' }, '🧭 '), h('b', null, IN_APP_TEXT)),
+        h('p', { class: 'scr-lbacct__small' }, 'Look for "Open in browser" in this app\'s menu. You can keep playing here as a guest.')
+      );
+    } else if (gate) {
+      signIn = gateForm(gate);
+    } else {
+      signIn = h('div', { class: 'scr-lbacct__btns' }, googleButton(linking, { key: 'link', where: 'leaderboard' }));
+    }
+    return [
+      h('p', { class: 'scr-lbacct__for' }, 'For grown-ups'),
+      h('p', null, 'Sign in with Google to keep this progress safe. Sign in with the same account on another phone, tablet or computer to carry on there.'),
+      h('p', { class: 'scr-lbacct__small' }, 'The leaderboard only ever shows the snow name, never a real name or email.'),
+      signIn,
+      note ? accountNote(note) : null,
+      h('p', { class: 'scr-lbacct__small scr-lbacct__safari' }, SAFARI_GUEST_TEXT),
+      accountLinks(lb),
+    ];
+  }
+
+  function googleView(lb, st) {
+    const who = accountName(st);
+    const op = state.auth.op;
+    const busy = !!(op && op.kind === 'signout');
+    // the popup is done but the cloud is still moving progress across (after
+    // CLOUD_TIMEOUT_MS this stops holding up "Sign out", like every spinner)
+    const finishing = !!(op && op.kind === 'link' && !op.slow);
+    const kids = [
+      h(
+        'p',
+        { class: 'scr-lbacct__who' },
+        h('span', { class: 'scr-lbacct__tick', 'aria-hidden': 'true' }, '✓'),
+        h('span', null, who ? ['Signed in as ', h('b', null, who), '.'] : 'Signed in with Google.', ' Progress is saved to your account.')
+      ),
+    ];
+    if (lb.confirmSignOut || busy) {
+      const q = `scr-lb-out-${lb.uid}`;
+      const stay = button('Stay signed in', { variant: 'green', size: 'small', key: 'cancel', onClick: () => cancelSignOut() });
+      const out = button(busy ? 'Signing out…' : 'Yes, sign out', {
+        icon: busy ? '❄' : '👋',
+        variant: 'red',
+        size: 'small',
+        key: 'confirm',
+        cls: busy ? 'is-busy' : '',
+        onClick: () => signOut(),
+      });
+      if (busy) {
+        stay.setAttribute('aria-disabled', 'true');
+        out.setAttribute('aria-disabled', 'true');
+      }
+      kids.push(
+        h(
+          'div',
+          { class: 'scr-confirm', role: 'alertdialog', 'aria-labelledby': q, 'aria-describedby': `${q}-d` },
+          h(
+            'p',
+            null,
+            h('b', { id: q }, 'Sign out on this device?'),
+            ' ',
+            h('span', { id: `${q}-d` }, 'This device will start fresh, like a brand-new game. Your progress stays safe in your Google account: sign in again any time to bring it back.')
+          ),
+          h('div', { class: 'scr-confirm__btns' }, stay, out)
+        )
+      );
+    } else {
+      const deleting = !!(op && op.kind === 'delete');
+      const outBtn = button('Sign out on this device', { icon: '👋', variant: 'snow', size: 'small', key: 'signout', onClick: () => askSignOut() });
+      if (finishing || deleting) outBtn.setAttribute('aria-disabled', 'true');
+      kids.push(h('div', { class: 'scr-lbacct__btns' }, outBtn));
+      const note = finishing ? { tone: 'info', text: 'Finishing signing in…' } : authNote();
+      if (note) kids.push(accountNote(note));
+      kids.push(accountLinks(lb));
+    }
+    return kids;
+  }
+
+  // The card's small print: the privacy note, and "Delete my saved data" (for
+  // a facade that can) with its in-page question.
+  function accountLinks(lb) {
+    const deleting = !!(state.auth.op && state.auth.op.kind === 'delete');
+    if (deleting || (state.confirmDelete && hasCloudMethod('deleteEverything'))) return deleteConfirm(`scr-lb-del-${lb.uid}`);
+    return h(
+      'div',
+      { class: 'scr-lbacct__links' },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'scr-textlink',
+          'data-key': 'privacy',
+          onclick: () => {
+            play('click');
+            openPrivacy('leaderboard');
+          },
+        },
+        h('span', { 'aria-hidden': 'true' }, '🔒'),
+        ' Privacy'
+      ),
+      hasCloudMethod('deleteEverything')
+        ? h('button', { type: 'button', class: 'scr-textlink', 'data-key': 'delete', onclick: () => askDelete() }, h('span', { 'aria-hidden': 'true' }, '🗑️'), ' Delete my saved data')
+        : null
+    );
+  }
+
+  // Back from the privacy screen: focus the link that opened it.
+  function focusAccountLink(key) {
+    const refs = state.lb && state.lb.account;
+    const link = refs && refs.body.querySelector(`[data-key="${key}"]`);
+    if (!link) return;
+    focusEl(link);
+    try {
+      link.scrollIntoView({ block: 'nearest' });
+    } catch {
+      /* old browsers */
+    }
+  }
+
+  // ---- Google sign-in / sign-out (shared by the title and the leaderboard) ----
+
+  // The note of the last sign-in or sign-out, if it belongs to this visit.
+  function authNote() {
+    const n = state.auth.note;
+    return n && n.visit === state.visit ? n : null;
+  }
+
+  function setAuthNote(tone, text) {
+    state.auth.note = text ? { tone, text, visit: state.visit } : null;
+  }
+
+  // A sign-in still waiting after CLOUD_TIMEOUT_MS holds nothing up: its
+  // button offers "Try again", and signing out may go ahead (the cloud runs
+  // account changes one at a time, and the older answer is then ignored).
+  function authBusy() {
+    const op = state.auth.op;
+    return !!op && !(op.kind === 'link' && op.slow);
+  }
+
+  // Whichever screen shows the account right now picks up the change.
+  function renderAuthViews() {
+    if (state.current === 'title') renderTitleAuth();
+    else if (state.current === 'leaderboard') renderAccountBody();
+    else if (state.current === 'privacy') renderPrivacyDelete();
+  }
+
+  function announce(text) {
+    let live = null;
+    if (state.current === 'title') live = titleAuth && titleAuth.live;
+    else if (state.current === 'leaderboard') live = state.lb && state.lb.account && state.lb.account.live;
+    else if (state.current === 'privacy') live = state.privacy && state.privacy.live;
+    if (live) live.textContent = text;
+  }
+
+  // Sounds only while the player is still looking at a menu that shows it.
+  function authSound(name) {
+    if (state.current === 'title' || state.current === 'leaderboard' || state.current === 'privacy') play(name);
+  }
+
+  // ---- the grown-ups question in front of Google sign-in ----
+  // Linking stores a grown-up's email, name and photo, so every "Sign in with
+  // Google" first asks a sum a young child can't do in their head. A right
+  // answer holds for GATE_OPEN_MS in this tab.
+
+  function readGateUntil() {
+    try {
+      const v = Number(window.sessionStorage.getItem(GATE_STORE_KEY));
+      // a stored time further ahead than one window can't be ours
+      return Number.isFinite(v) && v <= Date.now() + GATE_OPEN_MS ? v : 0;
+    } catch {
+      return 0; // no storage (private mode, tests): this page only
+    }
+  }
+
+  function gatePassed() {
+    return Date.now() < state.gateUntil;
+  }
+
+  // The question, if it is open on `where` (the screen and visit that asked).
+  function gateHere(where) {
+    const g = state.gate;
+    return g && g.at === where && g.visit === state.visit && state.current === where ? g : null;
+  }
+
+  // What the title strip's redraw key needs from the question (not the typing).
+  function gateSig(g) {
+    return `${g.a}x${g.b}:${g.passed}:${g.msg ? g.msg.text : ''}`;
+  }
+
+  // The box that holds the question on the current screen.
+  function gateBox() {
+    if (state.current === 'title') return titleAuth && titleAuth.box;
+    if (state.current === 'leaderboard') return state.lb && state.lb.account && state.lb.account.body;
+    return null;
+  }
+
+  function focusGate(key) {
+    const box = gateBox();
+    focusEl(box && box.querySelector(`[data-key="${key}"]`));
+  }
+
+  // A tap on "Sign in with Google" (or its "Try again"). Inside the 10 minutes
+  // it goes straight to Google, still inside the click.
+  function signInTapped(where) {
+    if (IN_APP || authBusy() || !cloudReady()) return;
+    if (gatePassed()) {
+      startLinkGoogle();
+      return;
+    }
+    play('click');
+    state.gate = { at: where, visit: state.visit, ...gateQuestion(null), value: '', passed: false, msg: null };
+    // one question at a time
+    if (where === 'title' && state.confirmReset) {
+      state.confirmReset = false;
+      renderResetArea();
+    }
+    state.confirmDelete = false;
+    state.auth.note = null;
+    renderAuthViews();
+    focusGate('gate-input');
+  }
+
+  // Closes an open question (Esc, or its ✕), putting focus back on the
+  // Google button. Answers whether there was one to close.
+  function closeGate() {
+    if (!gateHere(state.current)) return false;
+    play('click');
+    state.gate = null;
+    renderAuthViews();
+    const box = gateBox();
+    focusEl(box && box.querySelector('.scr-gbtn'));
+    return true;
+  }
+
+  function checkGate() {
+    const g = gateHere(state.current);
+    if (!g || g.passed) return;
+    const n = gateAnswer(g.value);
+    if (n === null) {
+      g.msg = { tone: 'info', text: 'Please type the answer as a number.' };
+      renderAuthViews();
+      focusGate('gate-input');
+      announce(g.msg.text);
+      return;
+    }
+    if (n === g.a * g.b) {
+      g.passed = true;
+      g.msg = { tone: 'ok', text: "That's right, thank you!" };
+      state.gateUntil = Date.now() + GATE_OPEN_MS;
+      try {
+        window.sessionStorage.setItem(GATE_STORE_KEY, String(state.gateUntil));
+      } catch {
+        /* this page only, then */
+      }
+      play('pop');
+      renderAuthViews();
+      focusGate('gate-go');
+      announce("That's right! Now press Continue to Google.");
+      return;
+    }
+    // gentle: no buzzer, just a fresh question
+    const next = gateQuestion(g);
+    g.a = next.a;
+    g.b = next.b;
+    g.value = '';
+    g.msg = { tone: 'error', text: 'Not quite. Ask a grown-up to help!' };
+    play('click');
+    renderAuthViews();
+    focusGate('gate-input');
+    announce(`Not quite. Ask a grown-up to help! New question: what is ${next.a} times ${next.b}?`);
+  }
+
+  let gateUid = 0;
+
+  // The question as a little form: a label, a number field, Check (Enter
+  // works too) and ✕. A right answer swaps the field and Check for "Continue
+  // to Google", whose click calls linkGoogle() at once: Safari opens popups
+  // only there.
+  function gateForm(g) {
+    const id = `scr-gate-${++gateUid}`;
+    const msgId = `${id}-msg`;
+    const close = h(
+      'button',
+      { type: 'button', class: 'scr-gate__x', 'data-key': 'gate-close', 'aria-label': 'Not now', title: 'Not now', onclick: () => closeGate() },
+      h('span', { 'aria-hidden': 'true' }, '✕')
+    );
+    if (g.passed) {
+      const ready = cloudReady();
+      const go = button(ready ? 'Continue to Google' : 'One moment…', {
+        icon: 'G',
+        variant: 'snow',
+        size: 'small',
+        key: 'gate-go',
+        cls: `scr-gbtn${ready ? '' : ' is-waiting'}`,
+        // no await, no promise, nothing in between: straight to the facade
+        onClick: () => startLinkGoogle(),
+      });
+      if (!ready) go.setAttribute('aria-disabled', 'true');
+      return h(
+        'div',
+        { class: 'scr-gate is-passed', role: 'group', 'aria-label': 'Grown-ups check' },
+        h('p', { class: 'scr-gate__done' }, h('span', { 'aria-hidden': 'true' }, '✓ '), g.msg ? g.msg.text : "That's right, thank you!"),
+        h('span', { class: 'scr-gate__row' }, go, close)
+      );
+    }
+    const input = h('input', {
+      id,
+      class: 'scr-gate__input',
+      type: 'text',
+      inputmode: 'numeric',
+      pattern: '[0-9]*',
+      maxlength: '4',
+      autocomplete: 'off',
+      autocorrect: 'off',
+      spellcheck: 'false',
+      enterkeyhint: 'done',
+      'data-key': 'gate-input',
+      'aria-invalid': g.msg && g.msg.tone === 'error' ? 'true' : null,
+      'aria-describedby': g.msg ? msgId : null,
+    });
+    input.value = g.value;
+    input.addEventListener('input', () => {
+      g.value = input.value;
+    });
+    const check = button('Check', { icon: '✓', variant: 'green', size: 'small', key: 'gate-check' });
+    check.setAttribute('type', 'submit');
+    const form = h(
+      'form',
+      { class: 'scr-gate', novalidate: true, 'aria-label': 'Grown-ups check', autocomplete: 'off' },
+      h('label', { class: 'scr-gate__q', for: id }, h('span', { class: 'scr-gate__for' }, 'For grown-ups:'), ` what is ${g.a} × ${g.b}?`),
+      h('span', { class: 'scr-gate__row' }, input, check, close),
+      g.msg ? h('p', { class: 'scr-gate__msg', id: msgId, 'data-tone': g.msg.tone }, g.msg.text) : null
+    );
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      checkGate();
+    });
+    return form;
+  }
+
+  function startLinkGoogle() {
+    const a = state.auth;
+    // one at a time, except that a sign-in stuck on its popup may be retried
+    if (IN_APP || authBusy() || !cloudReady()) return;
+    // Safari opens Google's window only inside the tap, so the facade comes
+    // first: before any sound, redraw or promise.
+    const result = cloudCall('linkGoogle');
+    play('click');
+    const token = ++a.seq;
+    a.op = { kind: 'link', token, slow: false };
+    a.note = null;
+    state.gate = null; // the question has done its job
+    renderAuthViews();
+    announce('Opening the Google sign-in window.');
+    // The popup waits on a grown-up, so instead of spinning forever the button
+    // wakes up again after a while; a late answer still lands.
+    authLater(() => {
+      if (!a.op || a.op.token !== token) return;
+      a.op.slow = true;
+      renderAuthViews();
+    }, CLOUD_TIMEOUT_MS);
+    whenDone(result, (res) => {
+      if (a.seq !== token) return; // a newer try owns the buttons
+      a.op = null;
+      if (res.ok || /already-linked/i.test(errorText(res.error))) {
+        setAuthNote('ok', res.switched ? SWITCHED_TEXT : LINKED_TEXT);
+        authSound('jingle');
+        state.boardCache.clear(); // after a switch, "me" is a different player
+        if (state.lb) scheduleBoardReload(state.lb, 600);
+      } else if (isCancelled(res)) {
+        a.note = null; // closing the popup is fine: nothing to report
+      } else if (isNotReady(res.error, res.reason)) {
+        setAuthNote('info', linkErrorText(res.error, res.reason)); // not a failure: the cloud is still waking up
+      } else {
+        setAuthNote('error', linkErrorText(res.error, res.reason));
+        authSound('error');
+      }
+      renderAuthViews();
+      announce(a.note ? a.note.text : 'Sign-in closed. Nothing changed.');
+    });
+  }
+
+  function askSignOut() {
+    const lb = state.lb;
+    if (!lb || authBusy()) return;
+    play('click');
+    lb.confirmSignOut = true;
+    state.confirmDelete = false;
+    state.auth.note = null;
+    renderAccountBody();
+    const box = lb.account.body;
+    focusEl(box.querySelector('[data-key="cancel"]'));
+    const confirmBox = box.querySelector('.scr-confirm');
+    if (confirmBox && confirmBox.scrollIntoView) confirmBox.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  }
+
+  function cancelSignOut() {
+    const lb = state.lb;
+    if (!lb || authBusy()) return;
+    play('click');
+    lb.confirmSignOut = false;
+    renderAccountBody();
+    focusEl(lb.account.body.querySelector('[data-key="signout"]'));
+  }
+
+  function signOut() {
+    const lb = state.lb;
+    const a = state.auth;
+    if (!lb || authBusy()) return;
+    play('whoosh');
+    const token = ++a.seq;
+    a.op = { kind: 'signout', token, slow: false };
+    a.note = null;
+    renderAuthViews();
+    announce('Signing out…');
+    // like the board, a late answer still lands if nothing newer was started
+    const finish = (res, timedOut) => {
+      if (a.seq !== token) return;
+      if (timedOut && !a.op) return; // answered in time
+      a.op = null;
+      if (state.lb) state.lb.confirmSignOut = false;
+      // 'not-signed-in': an earlier, timed-out sign-out got there first
+      if (res.ok || /not-signed-in/i.test(errorText(res.error))) {
+        setAuthNote('ok', 'Signed out. This device starts fresh, and your progress is safe in your Google account.');
+        state.boardCache.clear();
+        if (state.lb) scheduleBoardReload(state.lb, 600);
+      } else {
+        setAuthNote(
+          'error',
+          timedOut
+            ? 'Signing out is taking too long. Please try again.'
+            : looksOffline(res.error)
+              ? "You're offline. Please try again when the internet is back."
+              : "Couldn't sign out just now. Please try again."
+        );
+        authSound('error');
+      }
+      renderAuthViews();
+      announce(a.note.text);
+    };
+    authLater(() => finish({ ok: false, error: 'timeout' }, true), CLOUD_TIMEOUT_MS);
+    whenDone(cloudCall('signOutToFresh'), (res) => finish(res, false));
+  }
+
+  // ---- "Delete my saved data" (privacy screen and account card) ----
+
+  // The box that holds the delete question on the current screen.
+  function deleteBox() {
+    if (state.current === 'privacy') return state.privacy && state.privacy.box;
+    if (state.current === 'leaderboard') return state.lb && state.lb.account && state.lb.account.body;
+    return null;
+  }
+
+  // In-page question (never window.confirm), also shown while deleting.
+  function deleteConfirm(id) {
+    const busy = !!(state.auth.op && state.auth.op.kind === 'delete');
+    const keep = button('Keep my data', { variant: 'green', size: 'small', key: 'delete-no', onClick: () => cancelDelete() });
+    const yes = button(busy ? 'Deleting…' : 'Yes, delete it', {
+      icon: busy ? '❄' : '🗑️',
+      variant: 'red',
+      size: 'small',
+      key: 'delete-yes',
+      cls: busy ? 'is-busy' : '',
+      onClick: () => startDelete(),
+    });
+    if (busy) {
+      keep.setAttribute('aria-disabled', 'true');
+      yes.setAttribute('aria-disabled', 'true');
+    }
+    return h(
+      'div',
+      { class: 'scr-confirm scr-delconfirm', role: 'alertdialog', 'aria-labelledby': id, 'aria-describedby': `${id}-d` },
+      h(
+        'p',
+        null,
+        h('b', { id }, 'Delete your saved data?'),
+        ' ',
+        h(
+          'span',
+          { id: `${id}-d` },
+          "Your progress, snow name and scores are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
+        )
+      ),
+      h('div', { class: 'scr-confirm__btns' }, keep, yes)
+    );
+  }
+
+  function askDelete() {
+    if (authBusy() || !hasCloudMethod('deleteEverything')) return;
+    play('click');
+    state.confirmDelete = true;
+    state.auth.note = null;
+    if (state.gate) state.gate = null;
+    if (state.lb) state.lb.confirmSignOut = false;
+    renderAuthViews();
+    const box = deleteBox();
+    focusEl(box && box.querySelector('[data-key="delete-no"]'));
+    const confirmBox = box && box.querySelector('.scr-delconfirm');
+    if (confirmBox && confirmBox.scrollIntoView) confirmBox.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  }
+
+  function cancelDelete() {
+    if (authBusy() || !state.confirmDelete) return;
+    play('click');
+    state.confirmDelete = false;
+    renderAuthViews();
+    const box = deleteBox();
+    focusEl(box && box.querySelector('[data-key="delete"]'));
+  }
+
+  // Like signing out: one account change at a time, no spinner forever, and a
+  // late answer still lands if nothing newer was started.
+  function startDelete() {
+    const a = state.auth;
+    if (authBusy() || !hasCloudMethod('deleteEverything')) return;
+    play('whoosh');
+    const token = ++a.seq;
+    a.op = { kind: 'delete', token, slow: false };
+    a.note = null;
+    state.gate = null;
+    renderAuthViews();
+    announce('Deleting your saved data…');
+    const finish = (res, timedOut) => {
+      if (a.seq !== token) return;
+      if (timedOut && !a.op) return; // answered in time
+      a.op = null;
+      state.confirmDelete = false;
+      if (res.ok) {
+        setAuthNote('ok', res.accountDeleted === false ? DELETED_KEPT_TEXT : DELETED_TEXT);
+        state.boardCache.clear(); // "me" is a brand-new guest now
+        state.spareName = null;
+        if (state.lb) scheduleBoardReload(state.lb, 600);
+      } else {
+        setAuthNote('error', deleteErrorText(res.error, timedOut));
+        authSound('error');
+      }
+      renderAuthViews();
+      announce(a.note.text);
+    };
+    authLater(() => finish({ ok: false, error: 'timeout' }, true), DELETE_TIMEOUT_MS);
+    whenDone(cloudCall('deleteEverything'), (res) => finish(res, false));
+  }
+
+  // The title chip opens the leaderboard here, at the sign-in card.
+  function focusAccountCard() {
+    const refs = state.lb && state.lb.account;
+    if (!refs) return;
+    focusEl(refs.body.querySelector('button') || refs.card);
+    try {
+      refs.card.scrollIntoView({ block: 'nearest' });
+    } catch {
+      /* old browsers */
+    }
+    restartAnim(refs.card, 'is-flash');
+  }
+
+  // cloud.onStatus → main.js → cloudChanged(): patch, never rebuild.
+  function leaderboardStatusChanged() {
+    const lb = state.lb;
+    if (!lb || !lb.account) return;
+    const st = cloudStatus();
+    syncAccountStatus();
+    const was = lb.sig;
+    if (sigNow(st) !== was) {
+      renderAccountBody();
+      // Signed in or out elsewhere: "me" on the board may be someone else now.
+      // (Leaving 'checking' is just the first sync; the board already waited for it.)
+      if (was !== 'checking') {
+        state.boardCache.clear();
+        scheduleBoardReload(lb, 300);
+      }
+      return;
+    }
+    // the cloud got ready (or lost it): "One moment…" ↔ "Sign in with Google"
+    if (cloudReady() !== lb.ready) renderAccountBody();
+    // back online: a board that failed tries again by itself, quietly, so a
+    // focused "Try again" stays put until there is a list to show
+    if (st.state === 'synced' && lb.view === 'error' && !lb.pending) loadBoard({ force: true, quiet: true });
+  }
+
+  // main.js calls refresh() when the cloud merged progress in (or a name
+  // change was saved). Patching keeps focus, a half-answered sign-out
+  // question and the list on screen.
+  function refreshLeaderboard() {
+    const lb = state.lb;
+    if (!lb) return;
+    syncNameCard();
+    syncAccountCard();
+    if (lb.view === 'data') renderBoardPanel(false);
+    state.boardCache.clear();
+    scheduleBoardReload(lb, 800);
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRIVACY: what is kept, in plain words for grown-ups (docs/CLOUD.md)
+  // ---------------------------------------------------------------------------
+
+  function showPrivacy(back) {
+    openPrivacy(back);
+  }
+
+  function openPrivacy(back) {
+    state.privacyBack = PRIVACY_BACKS.has(back) ? back : 'title';
+    if (state.privacyBack === 'leaderboard' && !cloud()) state.privacyBack = 'title';
+    open('privacy', buildPrivacy);
+  }
+
+  function buildPrivacy() {
+    const hasCloud = !!cloud();
+    const canDelete = hasCloud && hasCloudMethod('deleteEverything');
+    const contact = contactLink(PRIVACY_CONTACT);
+    const contactEl = contact
+      ? contact.href
+        ? h(
+            'a',
+            {
+              class: 'scr-privacy__contact',
+              href: contact.href,
+              target: contact.external ? '_blank' : null,
+              rel: contact.external ? 'noopener noreferrer' : null,
+            },
+            contact.text,
+            contact.external ? h('span', { class: 'scr-sr' }, ' (opens in a new tab)') : null
+          )
+        : h('b', { class: 'scr-privacy__contact' }, contact.text)
+      : null;
+    const item = (icon, lead, ...text) =>
+      h(
+        'li',
+        { class: 'scr-privacy__item' },
+        h('span', { class: 'scr-privacy__icon', 'aria-hidden': 'true' }, icon),
+        h('p', null, h('b', null, lead), ' ', text)
+      );
+    // "To delete": the button where there is one, and the contact when set
+    let toDelete;
+    if (!hasCloud) toDelete = contactEl ? ['use "Reset progress" on the title screen. Questions? Contact ', contactEl, '.'] : 'use "Reset progress" on the title screen.';
+    else if (canDelete) toDelete = contactEl ? ['use the "Delete my saved data" button below, or contact ', contactEl, '.'] : 'use the "Delete my saved data" button below.';
+    else toDelete = contactEl ? ['contact ', contactEl, '.'] : '"Reset progress" on the title screen clears this device.';
+    const items = hasCloud
+      ? [
+          item('🐧', 'Guests:', 'we keep a random player ID, the game progress and the snow name. No name, email or location.'),
+          item('🔑', 'Google sign-in:', "Google Firebase also keeps the account's email, name and photo, so progress can follow you. Only grown-ups should do this."),
+          item('🏆', 'Leaderboard:', 'shows only snow names made from our word lists, and scores.'),
+          item('🚫', 'Never:', 'no ads, no analytics, no tracking, no chat.'),
+          item('☁️', 'Where:', 'Google Cloud (Firebase).'),
+          item('⏳', 'How long:', 'until you delete it, or until saves unused for 2 years are cleared.'),
+          item('📱', 'iPhone and iPad:', "Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it."),
+          item('🗑️', 'To delete:', toDelete),
+        ]
+      : [
+          // no cloud in this copy of the game: everything stays in this browser
+          item('💾', 'Saved on this device only:', 'the game progress, sound settings and snow name. No account, name, email or location.'),
+          item('🚫', 'Never:', 'no ads, no analytics, no tracking, no chat.'),
+          item('📱', 'iPhone and iPad:', 'Safari may clear saved progress after about a week of not playing.'),
+          item('🧹', 'To delete:', toDelete),
+        ];
+
+    const live = h('p', { class: 'scr-sr', role: 'status' });
+    const box = canDelete ? h('div', { class: 'scr-privacy__delbody' }) : null;
+    const delTitle = 'scr-privacy-del';
+    state.privacy = { box, live };
+    const body = h(
+      'div',
+      { class: 'scr-privacy' },
+      h('ul', { class: 'scr-privacy__list' }, items),
+      box
+        ? h(
+            'section',
+            { class: 'scr-privacy__delete scr-tint--blush', 'aria-labelledby': delTitle },
+            h('h3', { class: 'scr-privacy__deltitle', id: delTitle }, h('span', { 'aria-hidden': 'true' }, '🗑️'), ' Delete my saved data'),
+            box
+          )
+        : null,
+      live
+    );
+    renderPrivacyDelete();
+
+    const foot = [
+      button(state.privacyBack === 'leaderboard' ? 'Leaderboard' : 'Title', {
+        icon: '↩',
+        variant: 'red',
+        autofocus: true,
+        onClick: () => {
+          play('click');
+          leavePrivacy();
+        },
+      }),
+    ];
+    return page({ cls: 'scr-privacybook', title: 'Privacy', icon: '🔒', sub: 'What this game keeps, in plain words for grown-ups.' }, body, foot);
+  }
+
+  // The delete part: the button, its question (also while deleting), and the
+  // answer's note. Redrawn in place, keeping focus.
+  function renderPrivacyDelete() {
+    const refs = state.privacy;
+    if (!refs || !refs.box) return;
+    const deleting = !!(state.auth.op && state.auth.op.kind === 'delete');
+    const note = authNote();
+    const kids = [];
+    if (deleting || state.confirmDelete) {
+      kids.push(deleteConfirm('scr-privacy-delq'));
+    } else {
+      kids.push(
+        h('p', null, "Deletes this game's cloud save, snow name and scores, then starts this device fresh."),
+        h(
+          'div',
+          { class: 'scr-privacy__btns' },
+          button('Delete my saved data', { icon: '🗑️', variant: 'red', size: 'small', key: 'delete', onClick: () => askDelete() })
+        )
+      );
+    }
+    if (note && !deleting) kids.push(h('p', { class: 'scr-privacy__note', 'data-tone': note.tone }, note.text));
+    keepFocus(refs.box, () => refs.box.replaceChildren(...kids), () => refs.box.querySelector('button'));
+  }
+
+  // ---------------------------------------------------------------------------
   // PAUSE
   // ---------------------------------------------------------------------------
 
@@ -2342,10 +4222,23 @@ export function createScreens(root, deps = {}) {
   // Public API
   // ---------------------------------------------------------------------------
 
+  // Redraws the title for refresh(): a note from a sign-in that just
+  // finished stays, and so do keyboard focus (every title control is keyed)
+  // and the scroll position on short screens, since the cloud can merge
+  // progress in at any moment, e.g. on the first sync after boot.
+  function rebuildTitle() {
+    const active = typeof document !== 'undefined' ? document.activeElement : null;
+    const key = active && stage.contains(active) && active.getAttribute ? active.getAttribute('data-key') : null;
+    const top = stage.scrollTop;
+    open('title', buildTitle, { rebuild: true });
+    stage.scrollTop = top;
+    if (key) focusEl(stage.querySelector(`[data-key="${key}"]`));
+  }
+
   function refresh() {
     switch (state.current) {
       case 'title':
-        showTitle();
+        rebuildTitle();
         break;
       case 'results':
         if (state.lastSummary) renderResults(state.lastSummary, true);
@@ -2362,13 +4255,34 @@ export function createScreens(root, deps = {}) {
       case 'help':
         openHelp(state.helpBack);
         break;
+      case 'leaderboard':
+        refreshLeaderboard();
+        break;
+      case 'privacy':
+        renderPrivacyDelete();
+        break;
       default:
         break;
     }
   }
 
+  // main.js calls this from the cloud's onStatus. It only patches words and
+  // the account card in place: no rebuild, no focus change.
+  function cloudChanged() {
+    try {
+      if (state.current === 'title') {
+        renderCloudChip();
+        renderTitleAuth();
+      } else if (state.current === 'leaderboard') leaderboardStatusChanged();
+    } catch (err) {
+      console.error('[screens] cloudChanged failed', err);
+    }
+  }
+
   function destroy() {
     hideAll();
+    for (const id of authTimers) clearTimeout(id);
+    authTimers.clear();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeyDown, true);
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onMenuKeyGuard);
     el.remove();
@@ -2381,8 +4295,11 @@ export function createScreens(root, deps = {}) {
     showGallery,
     showPause,
     showHelp,
+    showLeaderboard,
+    showPrivacy,
     hideAll,
     refresh,
+    cloudChanged,
     destroy,
     el,
     get current() {

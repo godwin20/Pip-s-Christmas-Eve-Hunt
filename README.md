@@ -53,6 +53,37 @@ npm run zip
 
 This builds the game and makes `pips-christmas-eve-hunt.zip`, with `index.html` at the top. Drop the zip (or the `dist` folder) onto a static host such as Cloudflare Pages (Workers & Pages > Create application > Pages > Drag and drop your files). Hosts that run the game as a normal page keep saves working. itch.io runs games in a cross-site frame, so iPhone and iPad players are likely to lose their saves there.
 
+## Cloud saves and leaderboard
+
+Players start as guests, and grown-ups can sign in with Google so progress
+follows them to any device. A leaderboard ranks snow names such as
+"Jolly Penguin 42". It runs on Firebase's free plan (Authentication and
+Firestore Lite). `docs/CLOUD.md` has the design, and `src/cloud/config.js`
+holds the project config. Until a config is added, the game runs as before,
+saving on the device only.
+
+```bash
+npm run dev:cloud
+```
+
+This runs the game on http://localhost:5174 against local Firebase emulators,
+so no real project is needed (Java 21+ required).
+
+```bash
+npm test
+```
+
+```bash
+npm run test:rules
+```
+
+```bash
+npm run test:cloud
+```
+
+These are the unit tests, the security rules tests (emulator) and the sync
+tests against the emulators.
+
 ## Testing shortcuts
 
 Open http://localhost:5173/?debug=1 for these keys:

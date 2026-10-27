@@ -214,6 +214,13 @@
   text-shadow: none;
 }
 
+/* Leaderboard buttons: dark enough for the white label to read */
+.scr-btn--blue {
+  --bg: #3a7fe0;
+  --bg2: #6aa6ff;
+  --edge: #2459b3;
+}
+
 .scr-btn--big {
   min-height: 60px;
   padding: 0.6em 1.7em 0.65em;
@@ -247,6 +254,84 @@
   --fg: #fff;
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
   animation: scr-wiggle-sm 0.5s ease-in-out infinite;
+}
+
+/* Waiting on the cloud (Google popup, signing out): stays focusable for
+   keyboards and screen readers, but stops looking pressable. */
+.scr-btn[aria-disabled='true'] {
+  cursor: default;
+}
+
+.scr-btn[aria-disabled='true']:hover {
+  filter: none;
+  animation: none;
+}
+
+.scr-btn[aria-disabled='true']:active {
+  translate: none;
+  box-shadow:
+    inset 0 -4px 0 var(--edge),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    0 5px 0 var(--ink);
+}
+
+.scr-btn.is-busy {
+  cursor: progress;
+  filter: saturate(0.8);
+}
+
+.scr-btn.is-busy .scr-btn__icon {
+  animation: scr-spin 1.6s linear infinite;
+}
+
+/* "Sign in with Google": a white sticker with a round four-colour G */
+.scr-gbtn .scr-btn__icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.6em;
+  height: 1.6em;
+  margin-left: -0.5em;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: #fff;
+  color: transparent; /* the G is drawn by ::after */
+  font-size: 1.02em;
+  font-weight: 700;
+  filter: none;
+}
+
+.scr-gbtn .scr-btn__icon::after {
+  content: 'G';
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(#ea4335 0 45deg, #4285f4 45deg 135deg, #34a853 135deg 210deg, #fbbc05 210deg 300deg, #ea4335 300deg);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.scr-gbtn.is-busy .scr-btn__icon {
+  margin-left: 0;
+  border: 0;
+  background: none;
+  color: #4d96ff;
+}
+
+.scr-gbtn.is-busy .scr-btn__icon::after {
+  content: none;
+}
+
+/* "One moment…": the cloud isn't ready, so the button waits (softer G) */
+.scr-gbtn.is-waiting {
+  --fg: var(--ink-soft);
+  cursor: progress;
+}
+
+.scr-gbtn.is-waiting .scr-btn__icon {
+  opacity: 0.5;
 }
 
 /* Sound / music / voice switches */
@@ -357,6 +442,19 @@
 
 .scr-link:hover {
   color: #fff;
+}
+
+/* Words for screen readers only (status prefixes, rank numbers, live notes) */
+.scr-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Candy-stripe progress bars */
@@ -1849,6 +1947,9 @@
 .scr-menu .scr-btn:nth-child(4) {
   animation-delay: 0.69s;
 }
+.scr-menu .scr-btn:nth-child(5) {
+  animation-delay: 0.76s;
+}
 
 .scr-menu .scr-btn:hover {
   animation: scr-boing 0.5s ease;
@@ -1925,6 +2026,15 @@
   min-height: 30px;
 }
 
+/* "Reset progress" and "Privacy" on one line, so the title is no taller */
+.scr-reset__links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 10px;
+}
+
 .scr-confirm {
   max-width: 470px;
   padding: 12px 16px 14px;
@@ -1946,6 +2056,280 @@
   flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
+}
+
+/* cloud save chip + Google sign-in strip, under the stats ticket */
+.scr-cloudbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 14px;
+  width: min(760px, 100%);
+}
+
+.scr-cloudchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 5px 14px 5px 10px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: rgba(255, 248, 236, 0.95);
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font: 600 0.88rem/1.15 var(--font);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    translate 0.08s,
+    background 0.15s;
+}
+
+.scr-cloudchip:hover {
+  background: #fff;
+}
+
+.scr-cloudchip:active {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.scr-cloudchip__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* status dot, shared with the leaderboard's account card */
+.scr-clouddot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: #b9bfd3;
+}
+
+[data-tone='ok'] > .scr-clouddot {
+  background: var(--green);
+}
+
+[data-tone='busy'] > .scr-clouddot {
+  background: var(--gold);
+  animation: scr-dotpulse 1s ease-in-out infinite;
+}
+
+[data-tone='warn'] > .scr-clouddot {
+  background: #ff8a3d;
+}
+
+.scr-titleauth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px 12px;
+  max-width: 100%;
+  padding: 8px 16px 8px 10px;
+  border: var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(rgba(91, 74, 114, 0.1) 1.2px, transparent 1.7px) 0 0 / 16px 16px,
+    var(--sky);
+  box-shadow: 0 4px 0 var(--ink);
+  rotate: -0.6deg;
+  animation: scr-pop 0.45s 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+.scr-titleauth[data-view='checking'] {
+  display: none;
+}
+
+.scr-titleauth[data-view='google'] {
+  padding: 6px 16px;
+  background:
+    radial-gradient(rgba(91, 74, 114, 0.1) 1.2px, transparent 1.7px) 0 0 / 16px 16px,
+    var(--mint);
+}
+
+.scr-titleauth[data-view='busy'],
+.scr-titleauth[data-view='inapp'] {
+  padding: 8px 16px;
+}
+
+.scr-titleauth__line {
+  flex: 1 1 150px;
+  max-width: 230px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.scr-titleauth[data-view='google'] .scr-titleauth__line,
+.scr-titleauth[data-view='busy'] .scr-titleauth__line,
+.scr-titleauth[data-view='inapp'] .scr-titleauth__line {
+  flex-basis: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+
+/* in an app's own browser: where sign-in works instead of a button */
+.scr-titleauth[data-view='inapp'] .scr-titleauth__line:first-child {
+  color: var(--ink);
+}
+
+/* the grown-ups question in front of Google sign-in (title strip and the
+   leaderboard's account card): question | field + buttons, any message
+   underneath. A grid, not a wrapping flex row, so the strip stays as narrow
+   as its content and the cloud chip keeps its place beside it. */
+.scr-gate {
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: center;
+  justify-items: center;
+  gap: 4px 12px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
+.scr-gate__q,
+.scr-gate__done {
+  min-width: 0;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.scr-gate__done {
+  color: var(--green-dark);
+}
+
+/* a little snugger than the sign-in strip, so the open question adds next
+   to no height to the title */
+.scr-titleauth[data-view='gate'] {
+  padding: 5px 12px;
+}
+
+.scr-gate__for {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.scr-gate__row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+/* 1.1rem keeps iOS from zooming the page in when the field gets focus */
+.scr-gate__input {
+  width: 4.6em;
+  min-height: 40px;
+  padding: 5px 8px;
+  border: var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 0 3px 0 rgba(42, 27, 61, 0.1);
+  color: var(--ink);
+  font: 700 1.1rem/1.1 var(--font);
+  text-align: center;
+}
+
+.scr-gate__x {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font: 700 1rem/1 var(--font);
+  cursor: pointer;
+}
+
+.scr-gate__x:hover {
+  background: #fffaf0;
+}
+
+.scr-gate__x:active {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.scr-gate .scr-gate__msg {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.scr-gate .scr-gate__msg[data-tone='ok'] {
+  color: var(--green-dark);
+}
+
+.scr-gate .scr-gate__msg[data-tone='error'] {
+  color: var(--red-dark);
+}
+
+[data-tone='ok'].scr-titleauth__line {
+  color: var(--green-dark);
+}
+
+[data-tone='error'].scr-titleauth__line {
+  color: var(--red-dark);
+}
+
+.scr-titleauth__who {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.scr-titleauth__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scr-titleauth__tick,
+.scr-lbacct__tick {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* ==========================================================================
@@ -3828,6 +4212,691 @@ p .scr-key {
 }
 
 /* ==========================================================================
+   LEADERBOARD: board tabs, top list, snow name and Google sign-in cards
+   ========================================================================== */
+
+.scr-lbbook {
+  width: min(1000px, 100%);
+}
+
+/* board tabs reuse .scr-tab; each board gets its own colour when chosen */
+.scr-lbbook .scr-tab[data-tone='red'][aria-selected='true'] {
+  background: linear-gradient(#ff6d79, var(--red));
+}
+.scr-lbbook .scr-tab[data-tone='gold'][aria-selected='true'] {
+  background: linear-gradient(#ffe28f, var(--gold));
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+.scr-lbbook .scr-tab[data-tone='green'][aria-selected='true'] {
+  background: linear-gradient(#47c48f, var(--green));
+}
+
+.scr-lb {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 22px 28px;
+  padding-top: 4px;
+}
+
+.scr-lb__main,
+.scr-lb__side {
+  min-width: 0;
+}
+
+.scr-lb__side {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding-top: 14px; /* room for the cards' pins */
+}
+
+.scr-lb__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 8px;
+  margin: 2px 0 12px;
+  font-size: 1.3rem;
+  text-align: center;
+}
+
+.scr-lb__heading small {
+  flex-basis: 100%;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.scr-lb__icon {
+  font-size: 1.1em;
+}
+
+/* keeps the cards beside it still while the list loads */
+.scr-lb__board {
+  min-height: 210px;
+}
+
+.scr-lb__list {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin: 0;
+  padding: 0 5px 4px; /* room for the own row's glow inside the scrolling body */
+  list-style: none;
+}
+
+.scr-lbrow {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 6px 16px 6px 8px;
+  border: var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 0 var(--ink);
+  animation: scr-rise 0.4s backwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+.scr-lbrow:nth-child(even) {
+  background: #fffaf0;
+}
+
+.scr-lb__list.is-still .scr-lbrow {
+  animation: none;
+}
+
+.scr-lbrow.is-top1 {
+  background: linear-gradient(90deg, #fff0a6, #fffdf2 72%);
+}
+.scr-lbrow.is-top2 {
+  background: linear-gradient(90deg, #e3e9f5, #fbfcff 72%);
+}
+.scr-lbrow.is-top3 {
+  background: linear-gradient(90deg, #ffdcbc, #fffaf4 72%);
+}
+
+/* the player's own row: mint, a soft green glow and a "You!" sticker */
+.scr-lbrow.is-me {
+  background: linear-gradient(90deg, #bfeed6, var(--mint) 72%);
+  box-shadow:
+    0 4px 0 var(--ink),
+    0 0 0 4px rgba(42, 157, 111, 0.35);
+  rotate: -0.5deg;
+}
+
+.scr-lbrow__rank {
+  display: grid;
+  place-items: center;
+}
+
+.scr-lbrow__medal {
+  font-size: 1.9rem;
+  line-height: 1;
+  filter: drop-shadow(0 2px 0 rgba(42, 27, 61, 0.3));
+}
+
+.scr-lbrow__num {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 32px;
+  padding: 0 6px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--paper);
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* a long snow name wraps (and "You!" drops under it) rather than being cut
+   short: on a phone "Dazzling Marshmallow 99" would otherwise lose its end */
+.scr-lbrow__who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.scr-lbrow__name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+.scr-lbrow__you {
+  flex: none;
+  padding: 2px 9px 3px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: linear-gradient(#47c48f, var(--green));
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.2);
+  rotate: -5deg;
+}
+
+.scr-lbrow__score {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.05;
+  text-align: right;
+}
+
+.scr-lbrow__score b {
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.scr-lbrow__score small {
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* loading placeholders */
+.scr-lbrow.is-ghost {
+  border-color: rgba(42, 27, 61, 0.22);
+  background: linear-gradient(90deg, #f1ebf8 0 30%, #fff 50%, #f1ebf8 70%) 0 0 / 200% 100%;
+  box-shadow: 0 4px 0 rgba(42, 27, 61, 0.18);
+  animation:
+    scr-rise 0.4s backwards,
+    scr-slide 1.4s linear infinite;
+  animation-delay: calc(var(--i, 0) * 90ms);
+}
+
+/* loading / empty / offline */
+.scr-lb__state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px 6px;
+  text-align: center;
+}
+
+.scr-lb__state .scr-lb__list {
+  align-self: stretch;
+  margin-top: 10px;
+}
+
+.scr-lb__state .scr-btn {
+  margin-top: 8px;
+}
+
+.scr-lb__flake {
+  color: #4d96ff;
+  font-size: 2.2rem;
+  line-height: 1;
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.25);
+  animation: scr-spin 2.4s linear infinite;
+}
+
+.scr-lb__pip {
+  margin-bottom: 4px;
+  font-size: 7.5px;
+}
+
+.scr-lb__big {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.scr-lb__small {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.scr-lb__you {
+  width: fit-content;
+  max-width: 100%;
+  margin: 16px auto 0;
+  padding: 7px 18px 8px;
+  border: var(--line);
+  border-radius: 999px;
+  background: linear-gradient(#fff3b0, var(--gold));
+  box-shadow: 0 4px 0 var(--ink);
+  font-size: 0.95rem;
+  text-align: center;
+}
+
+.scr-lb__you b {
+  font-size: 1.1rem;
+}
+
+.scr-lb__hint {
+  margin: 14px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* pinned cards beside the board, like the Help notes */
+.scr-lbcard {
+  position: relative;
+  padding: 20px 18px 16px;
+  border: var(--line);
+  border-radius: 6px 18px 6px 18px;
+  background: var(--tint, #fff);
+  box-shadow: 0 5px 0 var(--ink);
+  rotate: 0.6deg;
+  animation: scr-rise 0.4s 0.1s backwards;
+}
+
+.scr-lbcard--acct {
+  rotate: -0.6deg;
+  animation-delay: 0.18s;
+}
+
+.scr-lbcard--acct .scr-note__pin {
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, #7db4ff 24%, #2459b3);
+}
+
+/* the title chip sends the player here */
+.scr-lbcard.is-flash {
+  animation: scr-cardflash 0.9s ease-in-out 2;
+}
+
+.scr-lbcard__title {
+  margin: 0 0 12px;
+  font-size: 1.15rem;
+  text-align: center;
+}
+
+.scr-lbcard p {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* "Hello! My snow name is" name-tag sticker */
+.scr-lbname__badge {
+  display: flex;
+  flex-direction: column;
+  max-width: 320px;
+  margin: 0 auto 14px;
+  overflow: hidden;
+  border: var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 4px 0 var(--ink);
+  text-align: center;
+  rotate: -1.5deg;
+}
+
+.scr-lbname__badge.is-boing {
+  animation: scr-jelly 0.5s ease;
+}
+
+.scr-lbname__hello {
+  padding: 4px 10px 5px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 var(--red-dark);
+}
+
+.scr-lbname__name {
+  display: block;
+  padding: 10px 12px 12px;
+  font-size: 1.45rem;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.scr-lbname__pick {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.scr-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+}
+
+.scr-field__label {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.scr-select {
+  position: relative;
+  display: block;
+}
+
+.scr-select::after {
+  content: '▾';
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  translate: 0 -50%;
+  color: var(--ink);
+  font-size: 0.95rem;
+  pointer-events: none;
+}
+
+.scr-select select {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 30px 8px 12px;
+  border: var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font: 600 1rem/1.2 var(--font);
+  text-overflow: ellipsis;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.scr-select select:hover {
+  background: #fffaf0;
+}
+
+.scr-lbname__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.scr-lbname__show {
+  max-width: 100%;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.scr-lbcard .scr-lbname__note {
+  margin: 12px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+/* "Play on any device" (for grown-ups) */
+.scr-lbcard .scr-lbacct__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  max-width: 100%;
+  margin: -4px auto 12px;
+  padding: 3px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.scr-lbcard .scr-lbacct__for {
+  display: inline-block;
+  margin: 0 0 6px;
+  padding: 2px 9px;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  background: var(--butter);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  rotate: -2deg;
+}
+
+.scr-lbcard .scr-lbacct__small {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.scr-lbacct__who {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.scr-lbacct__who b {
+  overflow-wrap: anywhere;
+}
+
+.scr-lbacct__btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0 4px;
+}
+
+.scr-lbcard .scr-lbacct__note {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: center;
+  animation: scr-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+.scr-lbcard .scr-lbacct__note[data-tone='ok'] {
+  background: var(--mint);
+  color: var(--green-dark);
+}
+
+.scr-lbcard .scr-lbacct__note[data-tone='error'] {
+  background: var(--blush);
+  color: var(--red-dark);
+}
+
+.scr-lbacct__body .scr-confirm {
+  margin: 12px auto 0;
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+/* the card is narrow: question above the field */
+.scr-lbacct__body .scr-gate {
+  grid-template-columns: minmax(0, 1fr);
+  margin: 12px 0 4px;
+}
+
+/* in an app's own browser, where Google sign-in can't work */
+.scr-lbacct__inapp {
+  margin: 12px 0 4px;
+  padding: 10px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  text-align: center;
+}
+
+.scr-lbcard .scr-lbacct__inapp p {
+  margin: 0 0 4px;
+}
+
+.scr-lbcard .scr-lbacct__inapp p:last-child {
+  margin-bottom: 0;
+}
+
+.scr-lbcard .scr-lbacct__safari {
+  margin: 12px 0 0;
+}
+
+/* small print at the card's foot: Privacy · Delete my saved data */
+.scr-lbacct__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 16px;
+  margin-top: 12px;
+  padding-top: 6px;
+  border-top: 2px dashed rgba(42, 27, 61, 0.18);
+}
+
+/* a text link on paper (.scr-link is for the dark title) */
+.scr-textlink {
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: 600 0.88rem/1.2 var(--font);
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.scr-textlink:hover {
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   PRIVACY: what the game keeps, for grown-ups
+   ========================================================================== */
+
+.scr-privacybook {
+  width: min(760px, 100%);
+}
+
+.scr-privacy {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding-top: 4px;
+}
+
+.scr-privacy__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.scr-privacy__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  animation: scr-rise 0.35s backwards;
+}
+
+.scr-privacy__item:nth-child(even) {
+  background: #fffaf0;
+}
+
+.scr-privacy__icon {
+  flex: none;
+  width: 1.5em;
+  font-size: 1.25rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.scr-privacy__item p {
+  min-width: 0;
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.4;
+}
+
+.scr-privacy__contact {
+  color: #2459b3;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.scr-privacy__contact:hover {
+  color: var(--ink);
+}
+
+.scr-privacy__delete {
+  padding: 16px 18px 18px;
+  border: var(--line);
+  border-radius: 6px 18px 6px 18px;
+  background: var(--tint, #fff);
+  box-shadow: 0 5px 0 var(--ink);
+  text-align: center;
+  rotate: -0.4deg;
+}
+
+.scr-privacy__deltitle {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+}
+
+.scr-privacy__delbody > p {
+  margin: 0 0 12px;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.scr-privacy__btns {
+  display: flex;
+  justify-content: center;
+}
+
+.scr-privacy__delbody .scr-confirm {
+  margin: 0 auto;
+  text-align: left;
+}
+
+.scr-privacy__delbody > .scr-privacy__note {
+  margin: 12px 0 0;
+  padding: 8px 12px;
+  border: 2px solid var(--ink);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+  animation: scr-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+.scr-privacy__delbody > .scr-privacy__note[data-tone='ok'] {
+  background: var(--mint);
+  color: var(--green-dark);
+}
+
+.scr-privacy__delbody > .scr-privacy__note[data-tone='error'] {
+  background: var(--blush);
+  color: var(--red-dark);
+}
+
+/* ==========================================================================
    Keyframes
    ========================================================================== */
 
@@ -4239,6 +5308,28 @@ p .scr-key {
   }
 }
 
+@keyframes scr-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@keyframes scr-dotpulse {
+  50% {
+    scale: 0.7;
+    opacity: 0.6;
+  }
+}
+
+@keyframes scr-cardflash {
+  50% {
+    box-shadow:
+      0 5px 0 var(--ink),
+      0 0 0 6px rgba(255, 201, 74, 0.95),
+      0 0 24px 8px rgba(255, 201, 74, 0.6);
+  }
+}
+
 /* ==========================================================================
    Responsive
    ========================================================================== */
@@ -4250,6 +5341,20 @@ p .scr-key {
 
   .scr-wardrobe__preview {
     position: relative;
+  }
+
+  /* leaderboard: the board first, then the two cards */
+  .scr-lb {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .scr-lb__side {
+    padding-top: 10px;
+  }
+
+  .scr-lbcard {
+    width: min(480px, 100%);
+    margin: 0 auto;
   }
 }
 
@@ -4420,6 +5525,11 @@ p .scr-key {
   .scr-ticket__stats {
     gap: 4px 14px;
   }
+
+  /* grown-ups question: the question above the field on phones */
+  .scr-gate {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 @media (max-width: 420px) {
@@ -4430,6 +5540,72 @@ p .scr-key {
   .scr-chip {
     padding: 5px 10px;
     font-size: 0.9rem;
+  }
+
+  .scr-lbrow {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 8px;
+    min-height: 50px;
+    padding: 5px 12px 5px 6px;
+  }
+
+  .scr-lbrow__medal {
+    font-size: 1.6rem;
+  }
+
+  .scr-lbrow__num {
+    min-width: 34px;
+    height: 28px;
+    font-size: 0.85rem;
+  }
+
+  .scr-lbrow__name {
+    font-size: 0.98rem;
+  }
+
+  .scr-lbrow__score b {
+    font-size: 1.12rem;
+  }
+
+  .scr-lbcard {
+    padding: 20px 14px 14px;
+  }
+
+  .scr-lbname__name {
+    font-size: 1.25rem;
+  }
+
+  .scr-titleauth__line {
+    text-align: center;
+  }
+
+  .scr-privacy__item {
+    gap: 8px;
+    padding: 9px 10px;
+  }
+
+  .scr-privacy__delete {
+    padding: 14px 12px 16px;
+  }
+}
+
+/* very narrow phones: one word list per row */
+@media (max-width: 359px) {
+  .scr-lbname__pick {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Results with a Leaderboard button has four footer buttons: drop the Esc
+   hint's side reserve at every width so they stay on one row when they fit. */
+@media (min-width: 641px) {
+  .scr-results--cloud .scr-foot {
+    padding-left: 22px;
+    padding-right: 22px;
+  }
+
+  .scr-results--cloud .scr-hint {
+    display: none;
   }
 }
 
@@ -4475,6 +5651,41 @@ p .scr-key {
 
   .scr-ticket {
     padding: 9px 16px 10px;
+  }
+}
+
+/* Five menu buttons + the cloud bar make the title ~130 px taller: snugger
+   still, so it fits laptop windows from ~700 px tall (a 768 px screen under
+   the browser's bars) up to where it fits anyway. Phones scroll the title
+   anyway, so they keep the bigger touch targets. */
+@media (min-width: 641px) and (max-height: 830px) {
+  .scr-title--cloud {
+    gap: 6px;
+  }
+
+  .scr-menu--cloud {
+    gap: 7px;
+  }
+
+  .scr-menu--cloud .scr-btn {
+    min-height: 40px;
+    padding-top: 0.4em;
+    padding-bottom: 0.45em;
+  }
+
+  .scr-menu--cloud .scr-btn--big {
+    min-height: 50px;
+    padding-top: 0.45em;
+    padding-bottom: 0.5em;
+  }
+
+  .scr-titleauth {
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  .scr-titleauth .scr-btn {
+    min-height: 40px;
   }
 }
 

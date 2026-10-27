@@ -1,0 +1,149 @@
+rules_version = '2';
+
+// Cloud saves and the leaderboard (docs/CLOUD.md). Anything not allowed below
+// is denied. The caps mirror CLOUD_LIMITS and BOARD_LIMITS in src/cloud/merge.js,
+// and the name ranges mirror the word lists in src/cloud/names.js.
+//
+// These rules stop obvious tampering only: a determined cheater can still post
+// plausible scores, which only server code could check.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------ helpers
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function intIn(v, lo, hi) {
+      return v is int && v >= lo && v <= hi;
+    }
+
+    // Exactly these keys: no extras, none missing.
+    function hasExactly(m, keys) {
+      return m.keys().hasOnly(keys) && m.keys().hasAll(keys);
+    }
+
+    function nameOk(d) {
+      return intIn(d.adj, 0, 39) && intIn(d.noun, 0, 39) && intIn(d.num, 1, 99);
+    }
+
+    // ------------------------------------------------------------ players/{uid}
+
+    function profileOk(p) {
+      return p == null || (
+        p is map &&
+        hasExactly(p, ['adj', 'noun', 'num', 'hidden', 'setAt']) &&
+        nameOk(p) &&
+        p.hidden is bool &&
+        intIn(p.setAt, 0, 10000000000000)
+      );
+    }
+
+    function countersOk(s) {
+      return intIn(s.epoch, 0, 1000000) &&
+        intIn(s.coinsEarned, 0, 1000000000) &&
+        intIn(s.totalPresents, 0, 1000000000) &&
+        intIn(s.totalCrackers, 0, 1000000000) &&
+        intIn(s.nights, 0, 1000000000) &&
+        intIn(s.bestPresentsInNight, 0, 1000000000);
+    }
+
+    // Rules can't loop over a list, so ids are checked all at once: joining
+    // them and splitting the result gives back the same list only when every
+    // item is a string without the separator (join turns 1, true and null into
+    // text), and the pattern then checks each id. Mirrors cleanId in merge.js.
+    function idsOk(l) {
+      let joined = l.join('|');
+      return l.size() == 0 || (
+        joined.split('[|]') == l &&
+        l.toSet().size() == l.size() &&
+        joined.matches('[A-Za-z0-9_-]{1,64}([|][A-Za-z0-9_-]{1,64})*')
+      );
+    }
+
+    function collectionsOk(s) {
+      return s.upgrades is map && s.upgrades.size() <= 20 &&
+        idsOk(s.upgrades.keys()) &&
+        s.upgrades.values().hasOnly([0, 1, 2, 3]) &&
+        s.foundJokes is list && s.foundJokes.size() <= 200 && idsOk(s.foundJokes) &&
+        s.unlocked is list && s.unlocked.size() <= 20 && idsOk(s.unlocked) &&
+        s.wardrobe is map && s.wardrobe.size() <= 20 &&
+        idsOk(s.wardrobe.keys()) &&
+        s.wardrobe.values().hasOnly([true, false]);
+    }
+
+    function saveOk(s) {
+      return s is map &&
+        hasExactly(s, ['epoch', 'coinsEarned', 'totalPresents', 'totalCrackers', 'nights',
+          'bestPresentsInNight', 'upgrades', 'foundJokes', 'unlocked', 'wardrobe', 'profile']) &&
+        countersOk(s) &&
+        collectionsOk(s) &&
+        profileOk(s.profile);
+    }
+
+    function playerOk() {
+      let d = request.resource.data;
+      return hasExactly(d, ['v', 'save', 'updatedAt']) &&
+        d.v == 1 &&
+        d.updatedAt == request.time &&
+        saveOk(d.save);
+    }
+
+    match /players/{uid} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && playerOk();
+    }
+
+    // ------------------------------------------------------------ leaderboard/{uid}
+
+    function entryOk() {
+      let d = request.resource.data;
+      return hasExactly(d, ['adj', 'noun', 'num', 'bestNight', 'totalPresents', 'jokesFound', 'nights', 'updatedAt']) &&
+        nameOk(d) &&
+        intIn(d.bestNight, 0, 200) &&
+        intIn(d.totalPresents, 0, 1000000) &&
+        intIn(d.jokesFound, 0, 102) &&
+        intIn(d.nights, 0, 100000) &&
+        d.bestNight <= d.totalPresents &&
+        d.updatedAt == request.time;
+    }
+
+    function noScoreDrops() {
+      let d = request.resource.data;
+      let old = resource.data;
+      return d.bestNight >= old.bestNight &&
+        d.totalPresents >= old.totalPresents &&
+        d.jokesFound >= old.jokesFound;
+    }
+
+    // Document lists must ask for 50 or fewer. Count queries (getCountFromServer,
+    // for the "You: #N" rank) carry no limit; the SDK sends them without the
+    // implicit __name__ ordering every document list gets, which is how they
+    // are told apart. A hand-made REST query that leaves out __name__ gets
+    // through this gap (tested), but rules can't see whether a query is a
+    // count, and the entries are public to signed-in players anyway: paging
+    // 50 at a time reads them all at the same cost.
+    function smallListOrCount() {
+      let q = request.query;
+      return (q.limit is int && q.limit <= 50) || !('__name__' in q.orderBy);
+    }
+
+    function restedSinceLastWrite() {
+      return request.time >= resource.data.updatedAt + duration.value(5, 's');
+    }
+
+    match /leaderboard/{uid} {
+      allow get: if signedIn();
+      allow list: if signedIn() && smallListOrCount();
+      allow create: if isOwner(uid) && entryOk();
+      allow update: if isOwner(uid) && entryOk() && noScoreDrops() && restedSinceLastWrite();
+      allow delete: if isOwner(uid);
+    }
+  }
+}

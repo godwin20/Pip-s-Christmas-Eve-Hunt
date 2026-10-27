@@ -8,6 +8,12 @@
       "port": 5173
     },
     {
+      "name": "game-cloud",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:cloud"],
+      "port": 5174
+    },
+    {
       "name": "build-preview",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "preview", "--port", "4173", "--strictPort", "--base", "/pips-hunt/"],

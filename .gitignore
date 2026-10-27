@@ -1,3 +1,7 @@
 node_modules
 dist
 *.zip
+
+# Firebase emulator and CLI logs
+*-debug.log
+.firebase/

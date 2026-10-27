@@ -22,6 +22,8 @@ import { createHud } from './ui/hud.js';
 import { createRadar } from './ui/radar.js';
 import { createPopups } from './ui/popups.js';
 import { createScreens } from './ui/screens.js';
+import { createCloud } from './cloud/cloud.js';
+import { ensureProfile } from './cloud/merge.js';
 
 const DEBUG = new URLSearchParams(location.search).has('debug');
 const INTERACT_RANGE = 2.4;
@@ -58,6 +60,10 @@ window.addEventListener('resize', () => {
 
 // ---------------------------------------------------------------- shared ctx
 const save = loadSave();
+if (!save.profile) {
+  ensureProfile(save); // a random leaderboard snow name for a new player
+  writeSave(save);
+}
 const input = createInput(canvas);
 const sky = createSky(scene);
 const effects = createEffects(scene);
@@ -103,6 +109,7 @@ const ctx = {
     if (!Number.isFinite(n)) return;
     const amount = Math.max(-save.coins, Math.round(n));
     save.coins += amount;
+    save.coinsEarned += amount; // keeps coins === coinsEarned - spent (docs/CLOUD.md)
     // results show income only, so a gremlin theft never makes it negative
     if (ctx.run && amount > 0) ctx.run.coinsEarned += amount;
     hud.setCoins(save.coins);
@@ -137,18 +144,35 @@ let lastTickSecond = -1;
 let orbitAngle = 0;
 let homeArmedAt = -1; // ctx.time of the last E press at the sleigh, -1 = not armed
 
+// Cloud saves + leaderboard (docs/CLOUD.md). Everything still works without it.
+const cloud = createCloud({
+  getSave: () => save,
+  replaceSave: (next) => replaceSave(next),
+  onStatus: () => screens.cloudChanged?.(),
+});
+
 const screens = createScreens(document.getElementById('screens'), {
   getSave: () => save,
-  persist: () => writeSave(save),
+  persist: () => {
+    writeSave(save);
+    cloud.markDirty(); // Workshop buys, Wardrobe, name changes (debounced)
+  },
   sfx,
+  cloud,
   onStartNight: () => startNight(),
   onResume: () => resume(),
   onGoHome: () => endNight(true),
   onQuitToTitle: () => quitToTitle(),
   onResetSave: () => {
     const fresh = resetSave();
+    // a higher epoch makes this reset win over older copies on other devices;
+    // the snow name is who you are, not progress, so it stays
+    fresh.epoch = (save.epoch || 0) + 1;
+    fresh.profile = save.profile;
     for (const k of Object.keys(save)) delete save[k];
     Object.assign(save, fresh);
+    writeSave(save);
+    cloud.resetEverywhere();
     applySettings();
     applyCosmetics();
     hud.setCoins(save.coins);
@@ -164,6 +188,27 @@ const screens = createScreens(document.getElementById('screens'), {
     applyCosmetics();
   },
 });
+
+// The cloud merged another device's progress in: copy it into the live save
+// (every module holds this same object) and bring everything on screen up to date.
+function replaceSave(next) {
+  const themeBefore = isActive(save, 'candyTheme');
+  const goldenBefore = isUnlocked(save, 'goldenPresent');
+  for (const k of Object.keys(save)) delete save[k];
+  Object.assign(save, next);
+  writeSave(save);
+  applySettings();
+  applyCosmetics();
+  hud.setCoins(save.coins);
+  const inNight = state === 'playing' || state === 'paused';
+  if (inNight) return; // tonight keeps its map and upgrades; the next night uses the merged save
+  ctx.stats = computeStats(save);
+  // the menu backdrop shows the candy island / golden present when unlocked
+  if (isActive(save, 'candyTheme') !== themeBefore || isUnlocked(save, 'goldenPresent') !== goldenBefore) {
+    buildWorld(randomSeed(), { populate: true });
+  }
+  if (screens.current) screens.refresh();
+}
 
 function applySettings() {
   sfx.setEnabled(save.settings.sfx);
@@ -258,6 +303,7 @@ function startNight() {
   sfx.play('jingle');
   if (save.settings.music) sfx.startMusic();
   state = 'playing';
+  cloud.hold(true); // no cloud writes mid-night; the night is synced when it ends
   canvas.focus();
   ctx.toast('Find crackers 🎉 and presents 🎁 before morning!', '🌙');
 }
@@ -286,6 +332,8 @@ function endNight(early) {
   save.nights += 1;
   save.bestPresentsInNight = Math.max(save.bestPresentsInNight, run.presents);
   writeSave(save);
+  cloud.markDirty();
+  cloud.hold(false); // syncs the night and posts the leaderboard scores
   sfx.play(early ? 'jingle' : 'hoho');
   screens.showResults({
     seed: ctx.seed,
@@ -325,6 +373,8 @@ function quitToTitle() {
   state = 'title';
   // coins from late surprises (snowballs, gremlin, Santa) since the last item
   writeSave(save);
+  cloud.markDirty();
+  cloud.hold(false);
   screens.showTitle();
 }
 
@@ -657,6 +707,7 @@ function updateDebug() {
   }
   if (pressed('F8')) {
     save.coins += 500;
+    save.coinsEarned += 500;
     writeSave(save);
     hud.setCoins(save.coins);
     ctx.toast('Debug: +500 coins', '🛠️');
@@ -723,9 +774,16 @@ window.addEventListener('blur', () => {
 
 // A reload or closed tab mid-night keeps everything earned so far (coins from
 // late surprises are otherwise only written with the next item or night end).
-window.addEventListener('pagehide', () => writeSave(save));
+// The cloud copy is best-effort here (held during a night): the next visit's
+// first sync merges anything that did not make it.
+window.addEventListener('pagehide', () => {
+  writeSave(save);
+  cloud.flush();
+});
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) writeSave(save);
+  if (!document.hidden) return;
+  writeSave(save);
+  cloud.flush();
 });
 
 applySettings();
@@ -733,7 +791,14 @@ buildWorld(randomSeed(), { populate: true });
 hud.hide();
 screens.showTitle();
 requestAnimationFrame(frame);
+cloud.start();
+// best-effort: makes browsers less eager to clear the local save (and the guest sign-in)
+try {
+  navigator.storage?.persist?.().catch(() => {});
+} catch {
+  /* not supported */
+}
 
 if (DEBUG) {
-  window.__game = { ctx, save, startNight, endNight, get state() { return state; } };
+  window.__game = { ctx, save, cloud, startNight, endNight, get state() { return state; } };
 }

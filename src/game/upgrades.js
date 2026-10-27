@@ -93,6 +93,18 @@ export function nextCost(save, id) {
   return getUpgrade(id).costs[lvl];
 }
 
+// Coins spent to reach the levels in `upgrades` (an upgradeId -> level map).
+// Cloud saves derive coins from this, so merging two devices' upgrades can
+// never create coins (docs/CLOUD.md).
+export function spentOnUpgrades(upgrades) {
+  let total = 0;
+  for (const u of UPGRADES) {
+    const lvl = Math.max(0, Math.min(MAX_LEVEL, Math.floor(Number(upgrades && upgrades[u.id]) || 0)));
+    for (let i = 0; i < lvl; i++) total += u.costs[i];
+  }
+  return total;
+}
+
 // Spends coins and raises the level. Returns true on success.
 export function buyUpgrade(save, id) {
   const cost = nextCost(save, id);
