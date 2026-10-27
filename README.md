@@ -39,6 +39,16 @@ tap to open things, and use the on-screen Pause and Slide buttons.
 
 Progress is saved in the browser (localStorage).
 
+## Put it online
+
+The build is a plain static site with relative paths, so it runs from any web host or sub-folder.
+
+```bash
+npm run zip
+```
+
+This builds the game and makes `pips-christmas-eve-hunt.zip`, with `index.html` at the top. Drop the zip (or the `dist` folder) onto a static host such as Cloudflare Pages (Workers & Pages > Create application > Pages > Drag and drop your files). Hosts that run the game as a normal page keep saves working. itch.io runs games in a cross-site frame, so iPhone and iPad players are likely to lose their saves there.
+
 ## Testing shortcuts
 
 Open http://localhost:5173/?debug=1 for these keys:
