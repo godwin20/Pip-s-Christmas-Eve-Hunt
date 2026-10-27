@@ -1,0 +1,1068 @@
+/* In-game HUD for Pip's Christmas Eve Hunt.
+   Everything here is display-only: the whole layer is pointer-events:none so
+   it never blocks camera dragging on the canvas underneath. */
+
+.pip-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--ink);
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none !important;
+  transition: opacity 0.35s ease, visibility 0s linear 0s;
+}
+
+.pip-hud,
+.pip-hud * {
+  pointer-events: none !important;
+}
+
+.pip-hud.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
+}
+
+/* ---------- shared bits ---------- */
+
+.hud-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm), 0 8px 18px rgba(0, 0, 0, 0.25);
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.hud-num {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-num.is-bump {
+  animation: hud-num-bump 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pip-hud kbd {
+  display: inline-block;
+  min-width: 1.75em;
+  margin: 0 0.12em;
+  padding: 0 0.42em;
+  font-family: var(--font);
+  font-size: 0.88em;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--red);
+  background: #fff;
+  border: 2.5px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 0 3px 0 var(--ink);
+  transform: translateY(-2px);
+}
+
+/* ---------- top-left: coins + counts ---------- */
+
+.hud-tl {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.hud-coins {
+  position: relative;
+  padding: 4px 18px 4px 5px;
+  font-size: 26px;
+}
+
+.hud-coins .hud-num {
+  min-width: 1.4ch;
+}
+
+.hud-counts {
+  display: flex;
+  gap: 8px;
+}
+
+.hud-count {
+  padding: 3px 13px 3px 7px;
+  font-size: 19px;
+}
+
+.hud-count.is-zero .hud-num {
+  opacity: 0.5;
+}
+
+.hud-x {
+  margin-right: -5px;
+  font-size: 0.75em;
+  opacity: 0.5;
+}
+
+/* CSS-drawn gold coin */
+.hud-coin {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  background: radial-gradient(circle, #ffe07a 0 52%, #f0b22a 53% 63%, #ffd560 64%);
+  box-shadow: inset -3px -3px 0 rgba(214, 140, 16, 0.75), inset 2px 2px 0 rgba(255, 255, 255, 0.75);
+}
+
+.hud-coin::after {
+  content: '★';
+  font-size: 15px;
+  line-height: 1;
+  color: #d8890c;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.hud-coin.is-bump {
+  animation: hud-coin-flip 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* CSS-drawn Christmas cracker */
+.hud-ico-cracker {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  filter: drop-shadow(1.5px 0 0 var(--ink)) drop-shadow(-1.5px 0 0 var(--ink))
+    drop-shadow(0 1.5px 0 var(--ink)) drop-shadow(0 -1.5px 0 var(--ink));
+  transform: rotate(-12deg);
+}
+
+.hud-ico-cracker::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--green);
+  clip-path: polygon(0 2%, 34% 32%, 66% 32%, 100% 2%, 100% 98%, 66% 68%, 34% 68%, 0 98%);
+}
+
+.hud-ico-cracker::after {
+  content: '';
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 14%;
+  bottom: 14%;
+  border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--red) 0 4px, #fff 4px 6.5px);
+}
+
+/* CSS-drawn present */
+.hud-ico-present {
+  position: relative;
+  flex: none;
+  width: 25px;
+  height: 21px;
+  margin: 6px 2px 0 3px;
+  border: 2.5px solid var(--ink);
+  border-radius: 5px;
+  background: linear-gradient(90deg, transparent 37%, var(--gold) 37% 63%, transparent 63%),
+    linear-gradient(transparent 37%, var(--gold) 37% 63%, transparent 63%), var(--red);
+}
+
+.hud-ico-present::before,
+.hud-ico-present::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  width: 9px;
+  height: 8px;
+  border: 2.5px solid var(--ink);
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.hud-ico-present::before {
+  left: -1px;
+  transform: rotate(-28deg);
+}
+
+.hud-ico-present::after {
+  right: -1px;
+  transform: rotate(28deg);
+}
+
+/* +5 / -10 floaters */
+.hud-float {
+  position: absolute;
+  left: calc(100% + 6px);
+  top: 50%;
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+  color: #fff;
+  -webkit-text-stroke: 0;
+  text-shadow: 2px 0 var(--ink), -2px 0 var(--ink), 0 2px var(--ink), 0 -2px var(--ink),
+    1.5px 1.5px var(--ink), -1.5px -1.5px var(--ink), 1.5px -1.5px var(--ink), -1.5px 1.5px var(--ink),
+    0 4px 0 rgba(42, 27, 61, 0.35);
+  animation: hud-float-up 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.hud-float.is-plus {
+  color: #9dffb5;
+}
+
+.hud-float.is-minus {
+  color: #ff9aa2;
+}
+
+/* ---------- top-centre: timer, compass, buffs ---------- */
+
+.hud-tc {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transform: translateX(-50%);
+}
+
+.hud-timer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 1px 22px 9px 14px;
+  border: 5px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(var(--paper), var(--paper)) padding-box, var(--candy-stripe) border-box;
+  box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px rgba(42, 27, 61, 0.35), 0 14px 28px rgba(0, 0, 0, 0.3);
+  font-size: 38px;
+  font-weight: 700;
+  line-height: 1.12;
+  font-variant-numeric: tabular-nums;
+  transform-origin: 50% 20%;
+}
+
+.hud-timer-digits {
+  min-width: 3.3ch;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.hud-moon {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  box-shadow: inset -8px -3px 0 0 var(--gold);
+  filter: drop-shadow(0 0 5px rgba(255, 201, 74, 0.8));
+  animation: hud-moon-rock 3.2s ease-in-out infinite;
+}
+
+.hud-timer-bar {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 4px;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(42, 27, 61, 0.12);
+}
+
+.hud-timer-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), #7be08f);
+  transform-origin: left center;
+  transition: transform 1s linear;
+}
+
+.hud-timer.is-low {
+  color: #fff;
+  background: linear-gradient(var(--red), var(--red)) padding-box,
+    repeating-linear-gradient(45deg, #fff 0 10px, var(--red-dark) 10px 20px) border-box;
+  animation: hud-wobble 0.7s ease-in-out infinite;
+}
+
+.hud-timer.is-low .hud-moon {
+  box-shadow: inset -8px -3px 0 0 #fff;
+  filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8));
+}
+
+.hud-timer.is-low .hud-timer-bar {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.hud-timer.is-low .hud-timer-bar > i {
+  background: #fff;
+}
+
+.hud-timer.is-critical {
+  animation: hud-wobble-hard 0.5s ease-in-out infinite;
+}
+
+.hud-timer-digits.is-tick {
+  animation: hud-tick 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* placed after is-low/is-critical so the flash wins while it plays */
+.hud-timer.is-flash {
+  animation: hud-time-flash 0.9s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.hud-time-plus {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  font-size: 24px;
+  font-weight: 700;
+  color: #9dffb5;
+  white-space: nowrap;
+  text-shadow: 2px 0 var(--ink), -2px 0 var(--ink), 0 2px var(--ink), 0 -2px var(--ink),
+    1.5px 1.5px var(--ink), -1.5px -1.5px var(--ink), 1.5px -1.5px var(--ink), -1.5px 1.5px var(--ink);
+  /* the timer hugs the top edge, so this one pops out sideways and drifts
+     down instead of floating up off the screen */
+  animation: hud-time-plus 1.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* compass star arrow */
+.hud-compass {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: hud-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.hud-compass.is-off {
+  display: none;
+}
+
+.hud-compass-dial {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  border: 3px solid var(--ink);
+  background: radial-gradient(circle, #fffdf6 0 42%, var(--paper) 43%);
+  box-shadow: var(--shadow-sm), 0 8px 18px rgba(0, 0, 0, 0.25), inset 0 0 0 4px rgba(255, 201, 74, 0.35);
+}
+
+.hud-compass-dial::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 2px dashed rgba(42, 27, 61, 0.18);
+}
+
+.hud-needle {
+  position: absolute;
+  inset: -3px;
+  will-change: transform;
+}
+
+.hud-needle::before,
+.hud-needle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.hud-needle::before {
+  top: -15px;
+  width: 26px;
+  height: 22px;
+  margin-left: -13px;
+  background: var(--ink);
+}
+
+.hud-needle::after {
+  top: -9.5px;
+  width: 17px;
+  height: 14px;
+  margin-left: -8.5px;
+  background: linear-gradient(180deg, #fff3b0, var(--gold) 60%, var(--gold-dark));
+}
+
+.hud-compass-star {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  transition: font-size 0.2s ease, inset 0.2s ease;
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 2px 0 var(--ink), -2px 0 var(--ink), 0 2px var(--ink), 0 -2px var(--ink),
+    1.5px 1.5px var(--ink), -1.5px -1.5px var(--ink), 1.5px -1.5px var(--ink), -1.5px 1.5px var(--ink);
+  animation: hud-twinkle 1.8s ease-in-out infinite;
+}
+
+.hud-compass.has-dist .hud-compass-star {
+  inset: 0 0 18px;
+  font-size: 23px;
+}
+
+/* distance lives inside the dial so the needle tip never hides behind it */
+.hud-compass-dist {
+  position: absolute;
+  left: 50%;
+  bottom: 7px;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+  white-space: nowrap;
+  color: var(--snow);
+  background: var(--ink);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  transform: translateX(-50%);
+}
+
+.hud-compass-dist.is-off {
+  display: none;
+}
+
+/* buffs */
+.hud-buffs {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 62vw;
+}
+
+.hud-buff {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  padding: 3px 12px 8px 6px;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm), 0 8px 16px rgba(0, 0, 0, 0.22);
+  animation: hud-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.hud-buff-icon {
+  display: inline-block;
+  font-size: 22px;
+  line-height: 1;
+  animation: hud-bob 1.1s ease-in-out infinite;
+}
+
+.hud-buff-time {
+  min-width: 2.4ch;
+  font-weight: 700;
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-buff-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(42, 27, 61, 0.12);
+}
+
+.hud-buff-bar > i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--pink), var(--gold));
+  transform-origin: left center;
+  transition: transform 1s linear;
+}
+
+.hud-buff.is-ending .hud-buff-icon {
+  animation: hud-blink 0.5s steps(2, jump-none) infinite;
+}
+
+.hud-buff.is-out {
+  animation: hud-pop-out 0.3s ease-in both;
+}
+
+/* ---------- top-right: toasts ---------- */
+
+.hud-toasts {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  /* never wider than the space right of the timer */
+  max-width: min(340px, calc(50vw - 150px));
+}
+
+.hud-toast {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 16px 5px 5px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm), 0 8px 18px rgba(0, 0, 0, 0.22);
+  animation: hud-toast-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.hud-toast-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font-size: 21px;
+  line-height: 1;
+  border-radius: 50%;
+  border: 2.5px solid var(--ink);
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, var(--ice) 19%);
+}
+
+.hud-toast-text {
+  overflow-wrap: anywhere;
+}
+
+.hud-toast-count {
+  position: absolute;
+  top: -9px;
+  right: -8px;
+  padding: 0 7px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  color: #fff;
+  background: var(--red);
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+}
+
+.hud-toast-count:empty {
+  display: none;
+}
+
+.hud-toast.is-bump {
+  animation: hud-num-bump 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.hud-toast.is-out {
+  animation: hud-toast-out 0.35s ease-in both;
+}
+
+/* ---------- bottom-centre: interaction prompt ---------- */
+
+.hud-prompt-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+}
+
+.hud-prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 24px;
+  font-size: 22px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  animation: hud-pop-in 0.42s cubic-bezier(0.34, 1.56, 0.64, 1) both, hud-float 2.2s ease-in-out 0.42s infinite;
+}
+
+.hud-prompt::before,
+.hud-prompt::after {
+  content: '✦';
+  font-size: 14px;
+  color: var(--gold-dark);
+}
+
+.hud-prompt-wrap.is-off .hud-prompt {
+  animation: hud-pop-out 0.22s ease-in both;
+}
+
+/* ---------- bottom-left: control hints ---------- */
+
+.hud-hints {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  opacity: 0.92;
+}
+
+.hud-hints.is-off {
+  display: none;
+}
+
+.hud-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 11px 4px 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--snow);
+  background: rgba(15, 21, 51, 0.62);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+}
+
+.hud-hint kbd {
+  min-width: 1.6em;
+  margin: 0;
+  font-size: 11px;
+  color: var(--ink);
+  border-width: 2px;
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--ink);
+  transform: none;
+}
+
+.hud-hint-label {
+  margin-left: 3px;
+}
+
+/* ---------- bottom-right: radar + seed ---------- */
+
+.hud-radar {
+  position: absolute;
+  right: 16px;
+  bottom: 38px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  box-shadow: 0 6px 0 rgba(42, 27, 61, 0.45), 0 14px 30px rgba(0, 0, 0, 0.4);
+}
+
+.hud-radar canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.hud-seed {
+  position: absolute;
+  right: 16px;
+  bottom: 9px;
+  width: 200px;
+  text-align: center;
+}
+
+.hud-seed span {
+  display: inline-block;
+  padding: 2px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--snow);
+  background: rgba(15, 21, 51, 0.62);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-seed.is-off {
+  display: none;
+}
+
+/* ---------- smaller screens ---------- */
+
+@media (max-width: 760px), (max-height: 540px) {
+  .hud-radar {
+    width: 140px;
+    height: 140px;
+    bottom: 34px;
+  }
+
+  .hud-seed {
+    width: 140px;
+  }
+
+  .hud-timer {
+    font-size: 28px;
+    padding: 0 16px 8px 10px;
+  }
+
+  .hud-moon {
+    width: 20px;
+    height: 20px;
+    box-shadow: inset -6px -2px 0 0 var(--gold);
+  }
+
+  .hud-coins {
+    font-size: 21px;
+  }
+
+  .hud-count {
+    font-size: 16px;
+  }
+
+  .hud-hints {
+    display: none;
+  }
+
+  .hud-prompt-wrap {
+    bottom: 26px;
+  }
+
+  .hud-prompt {
+    font-size: 18px;
+    padding: 8px 18px;
+  }
+
+  .hud-toast {
+    font-size: 14px;
+  }
+
+  .hud-toasts {
+    max-width: min(300px, calc(50vw - 110px));
+  }
+}
+
+/* Only when the screen is too narrow for the centred prompt to clear the
+   140px radar does it hop up above the radar. (Lifting it on short-but-wide
+   screens, e.g. a landscape phone, parked it mid-screen over Pip and on top
+   of the buffs row.) */
+@media (max-width: 640px) {
+  .hud-prompt-wrap {
+    bottom: 186px;
+  }
+}
+
+@media (max-width: 520px) {
+  .hud-tl {
+    top: 12px;
+    left: 10px;
+    gap: 6px;
+  }
+
+  .hud-counts {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  /* right-hand column beside the compass, never on top of it */
+  .hud-toasts {
+    top: 104px;
+    right: 10px;
+    max-width: calc(50vw - 44px);
+  }
+
+  .hud-toast {
+    gap: 7px;
+    padding: 4px 10px 4px 4px;
+    font-size: 13px;
+  }
+
+  .hud-toast-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+  }
+
+  /* Portrait phones: the toast column sits to the right of the compass, so
+     the buff chips move out of the centre column into a compact stack under
+     the coin/cracker/present pills (icon + seconds, no label). */
+  .hud-tc {
+    left: 0;
+    right: 0;
+    transform: none;
+  }
+
+  .hud-buffs {
+    position: absolute;
+    top: 136px;
+    left: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    max-width: none;
+  }
+
+  .hud-buff {
+    padding: 2px 9px 7px 5px;
+    font-size: 14px;
+  }
+
+  .hud-buff-icon {
+    font-size: 19px;
+  }
+
+  .hud-buff-label {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-moon,
+  .hud-compass-star,
+  .hud-buff-icon,
+  .hud-timer.is-low,
+  .hud-timer.is-critical {
+    animation: none;
+  }
+
+  .hud-prompt {
+    animation: hud-pop-in 0.3s ease-out both;
+  }
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes hud-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) translateY(10px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.12) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hud-pop-out {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.5) translateY(8px);
+  }
+}
+
+@keyframes hud-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes hud-bob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(6deg);
+  }
+}
+
+@keyframes hud-num-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.38) rotate(-6deg);
+  }
+  65% {
+    transform: scale(0.92) rotate(3deg);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hud-coin-flip {
+  0% {
+    transform: none;
+  }
+  35% {
+    transform: translateY(-9px) scale(1.25) rotateY(180deg);
+  }
+  65% {
+    transform: translateY(0) scale(1.1, 0.9) rotateY(360deg);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes hud-float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(-30%) scale(0.5);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(-60%) scale(1.15);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-190%) scale(1);
+  }
+}
+
+@keyframes hud-time-plus {
+  0% {
+    opacity: 0;
+    transform: translate(-14px, -50%) scale(0.4) rotate(-12deg);
+  }
+  22% {
+    opacity: 1;
+    transform: translate(0, -50%) scale(1.3) rotate(4deg);
+  }
+  40% {
+    transform: translate(2px, -50%) scale(1) rotate(-2deg);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(16px, 20%) scale(0.9) rotate(0deg);
+  }
+}
+
+@keyframes hud-moon-rock {
+  0%,
+  100% {
+    transform: rotate(-24deg);
+  }
+  50% {
+    transform: rotate(-6deg) scale(1.06);
+  }
+}
+
+@keyframes hud-wobble {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  25% {
+    transform: rotate(-3deg) scale(1.04);
+  }
+  75% {
+    transform: rotate(3deg) scale(1.04);
+  }
+}
+
+@keyframes hud-wobble-hard {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1.04);
+  }
+  25% {
+    transform: rotate(-5deg) scale(1.1);
+  }
+  75% {
+    transform: rotate(5deg) scale(1.1);
+  }
+}
+
+@keyframes hud-tick {
+  0% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes hud-time-flash {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px rgba(42, 27, 61, 0.35), 0 0 0 0 rgba(107, 203, 119, 0.9);
+  }
+  30% {
+    transform: scale(1.18) rotate(-2deg);
+    box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px rgba(42, 27, 61, 0.35), 0 0 0 12px rgba(107, 203, 119, 0.55);
+  }
+  60% {
+    transform: scale(0.96) rotate(1deg);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px rgba(42, 27, 61, 0.35), 0 0 0 24px rgba(107, 203, 119, 0);
+  }
+}
+
+@keyframes hud-twinkle {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.15) rotate(12deg);
+  }
+}
+
+@keyframes hud-blink {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes hud-toast-in {
+  0% {
+    opacity: 0;
+    transform: translateX(120%) scale(0.8);
+  }
+  70% {
+    opacity: 1;
+    transform: translateX(-8px) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes hud-toast-out {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(60%) scale(0.85);
+  }
+}

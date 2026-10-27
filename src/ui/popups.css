@@ -1,0 +1,1234 @@
+/* Popups for Pip's Christmas Eve Hunt: the cracker joke slip (modal),
+   surprise banners (non-modal, never block the canvas) and the reward
+   unlock celebration (modal). */
+
+/* ---------- surprise banners (non-modal) ---------- */
+
+/* Docked along the bottom, just above the HUD's "Press E" prompt and between
+   the control hints (bottom-left) and the radar (bottom-right), so it never
+   sits over Pip or the surprise itself (jack-in-the-box, gremlin, snowballs),
+   which all play out in the middle of the screen. Several banners stack on
+   the same spot like a little pile of cards (newest in front) instead of
+   growing a column up into the play area. */
+.pp-banners {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 116px; /* clears the prompt (bottom 48px, ~58px tall, floats 5px) */
+  z-index: 2;
+  display: grid;
+  justify-items: center;
+  align-items: end;
+  /* the hints column and the 200px radar each take ~232px of the bottom edge */
+  width: min(480px, calc(100vw - 464px));
+  margin: 0 auto;
+  pointer-events: none !important;
+}
+
+.pp-banners,
+.pp-banners * {
+  pointer-events: none !important;
+}
+
+.pp-banner {
+  position: relative;
+  grid-area: 1 / 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: min(300px, 100%);
+  max-width: 100%;
+  padding: 12px 22px 8px 9px;
+  overflow: hidden;
+  font-family: var(--font);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 20px;
+  background: radial-gradient(circle at 10% 55%, rgba(255, 201, 74, 0.5), transparent 38%),
+    linear-gradient(180deg, #fffdf4, var(--paper));
+  box-shadow: var(--shadow);
+  transform-origin: 50% 100%;
+  transition: translate 0.3s ease, scale 0.3s ease, filter 0.3s ease;
+  animation: pp-banner-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* older banners tuck in behind the newest one and peek out over its top */
+.pp-banner:nth-last-child(2) {
+  translate: 0 -12px;
+  scale: 0.94;
+  filter: brightness(0.9);
+}
+
+.pp-banner:nth-last-child(n + 3) {
+  translate: 0 -22px;
+  scale: 0.88;
+  filter: brightness(0.8);
+}
+
+.pp-banner::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 7px;
+  background: var(--candy-stripe);
+  border-bottom: 2px solid var(--ink);
+}
+
+.pp-banner--bad {
+  background: radial-gradient(circle at 10% 55%, rgba(155, 143, 179, 0.45), transparent 38%),
+    linear-gradient(180deg, #efecf6, #d9d3e8);
+}
+
+.pp-banner--bad::before {
+  background: repeating-linear-gradient(45deg, #5b4a72 0 10px, #a99dc0 10px 20px);
+}
+
+.pp-banner-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  font-size: 30px;
+  line-height: 1;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, var(--gold) 19%);
+  box-shadow: var(--shadow-sm);
+  animation: pp-boing 0.9s cubic-bezier(0.34, 1.56, 0.64, 1) 0.12s both;
+}
+
+.pp-banner--bad .pp-banner-icon {
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, #b9b0d2 19%);
+  animation-name: pp-droop;
+}
+
+.pp-banner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pp-banner-kicker {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.pp-banner--bad .pp-banner-kicker {
+  color: var(--ink-soft);
+}
+
+.pp-banner-name {
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.pp-banner-detail {
+  margin-top: 1px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink-soft);
+}
+
+.pp-banner-detail:empty {
+  display: none;
+}
+
+.pp-banner .pp-spark {
+  font-size: 16px;
+}
+
+.pp-banner.is-out {
+  animation: pp-banner-out 0.4s ease-in both;
+}
+
+/* ---------- modal overlay ---------- */
+
+.pp-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  overflow: hidden auto;
+  padding: 20px 16px;
+  font-family: var(--font);
+  color: var(--ink);
+  background: radial-gradient(circle at 50% 45%, rgba(255, 201, 74, 0.14), transparent 55%),
+    radial-gradient(circle at 50% 45%, rgba(15, 21, 51, 0.62), rgba(15, 21, 51, 0.86) 75%);
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  animation: pp-fade-in 0.25s ease-out both;
+}
+
+.pp-modal.is-closing {
+  animation: pp-fade-out 0.26s ease-in both;
+}
+
+.pp-modal.is-closing .pp-joke,
+.pp-modal.is-closing .pp-unlock {
+  animation: pp-card-out 0.26s ease-in both;
+}
+
+.pp-rays {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 1100px;
+  height: 1100px;
+  margin: -550px 0 0 -550px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 233, 160, 0.1) 0 10deg, transparent 10deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 0 18%, transparent 58%);
+  mask: radial-gradient(circle, #000 0 18%, transparent 58%);
+  animation: pp-spin 30s linear infinite;
+}
+
+.pp-modal--rare .pp-rays {
+  background: repeating-conic-gradient(rgba(255, 201, 74, 0.22) 0 10deg, transparent 10deg 20deg);
+}
+
+.pp-modal--legendary .pp-rays {
+  background: repeating-conic-gradient(
+    rgba(255, 107, 107, 0.24) 0 8deg,
+    rgba(255, 217, 61, 0.22) 8deg 16deg,
+    rgba(107, 203, 119, 0.22) 16deg 24deg,
+    rgba(77, 150, 255, 0.22) 24deg 32deg,
+    rgba(199, 125, 255, 0.24) 32deg 40deg
+  );
+  animation-duration: 14s;
+}
+
+/* ---------- buttons ---------- */
+
+.pp-btn {
+  font-family: var(--font);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 10px 22px;
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: 0 5px 0 var(--ink);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.12s ease;
+}
+
+.pp-btn:hover {
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 7px 0 var(--ink);
+  filter: brightness(1.06);
+}
+
+.pp-btn:active {
+  transform: translateY(4px) scale(0.98);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.pp-btn:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.pp-btn--go {
+  color: #fff;
+  background: var(--green);
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.35);
+  animation: pp-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s backwards;
+}
+
+.pp-key {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-left: 6px;
+  padding: 0 0.35em;
+  font-size: 0.68em;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--ink);
+  text-shadow: none;
+  background: #fff;
+  border: 2px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--ink);
+  vertical-align: 0.15em;
+}
+
+/* ---------- joke card ---------- */
+
+.pp-joke {
+  --pp-paper: var(--paper);
+  position: relative;
+  width: min(560px, 100%);
+  margin: auto;
+  padding-top: 20px;
+  transform-origin: 50% 60%;
+  animation: pp-card-in 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.pp-joke--rare {
+  --pp-paper: #fff5d6;
+}
+
+.pp-joke--legendary {
+  --pp-paper: #fdf5ff;
+}
+
+.pp-slip-wrap {
+  position: relative;
+  filter: drop-shadow(0 6px 0 rgba(42, 27, 61, 0.42)) drop-shadow(0 18px 26px rgba(0, 0, 0, 0.35));
+  animation: pp-sway 4.5s ease-in-out 0.7s infinite;
+}
+
+.pp-joke--legendary .pp-slip-wrap {
+  filter: drop-shadow(0 0 14px rgba(255, 217, 61, 0.55)) drop-shadow(0 6px 0 rgba(42, 27, 61, 0.42))
+    drop-shadow(0 18px 26px rgba(0, 0, 0, 0.35));
+}
+
+.pp-slip-frame {
+  padding: 0;
+}
+
+.pp-joke--rare .pp-slip-frame {
+  padding: 5px;
+  background: linear-gradient(120deg, #fff1b8, var(--gold-dark) 30%, #fff3c4 50%, var(--gold) 70%, #fff1b8);
+  background-size: 250% 100%;
+  animation: pp-rainbow 4s linear infinite;
+}
+
+.pp-joke--legendary .pp-slip-frame {
+  padding: 7px;
+  background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff, #ff6b6b, #ffd93d);
+  background-size: 300% 100%;
+  animation: pp-rainbow 2.6s linear infinite;
+}
+
+.pp-slip {
+  position: relative;
+  padding: 34px 36px 32px;
+  text-align: center;
+  cursor: pointer;
+  background: linear-gradient(
+      90deg,
+      transparent 33%,
+      rgba(42, 27, 61, 0.06) 33.2%,
+      transparent 33.6%,
+      transparent 66.4%,
+      rgba(42, 27, 61, 0.06) 66.6%,
+      transparent 67%
+    ),
+    repeating-linear-gradient(180deg, transparent 0 33px, rgba(77, 150, 255, 0.09) 33px 34px), var(--pp-paper);
+}
+
+.pp-joke.is-revealed .pp-slip {
+  cursor: default;
+}
+
+.pp-kind {
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+.pp-kind::before,
+.pp-kind::after {
+  content: '✦';
+  margin: 0 8px;
+  color: var(--gold-dark);
+}
+
+.pp-q {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.28;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.pp-a {
+  margin: 18px 0 0;
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.28;
+  color: var(--green-dark);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.pp-joke:not(.is-revealed) .pp-a {
+  display: none;
+}
+
+.pp-joke.is-revealed .pp-a {
+  animation: pp-answer-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.pp-a:empty {
+  display: none !important;
+}
+
+.pp-reveal {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 20px;
+  padding: 10px 24px 8px;
+  font-family: var(--font);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.75);
+  border: 3px dashed var(--ink-soft);
+  border-radius: 16px;
+  cursor: pointer;
+  animation: pp-nudge 1.6s ease-in-out 0.9s infinite;
+}
+
+.pp-reveal:hover {
+  background: #fff;
+  border-color: var(--ink);
+}
+
+.pp-reveal small {
+  margin-top: 2px;
+  font-size: 12px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.pp-joke.is-revealed .pp-reveal {
+  display: none;
+}
+
+/* quotes */
+.pp-kind-quote .pp-q {
+  font-style: italic;
+}
+
+.pp-kind-quote .pp-q::before,
+.pp-kind-quote .pp-q::after {
+  font-size: 1.7em;
+  line-height: 0;
+  vertical-align: -0.38em;
+  color: var(--gold-dark);
+  font-style: normal;
+}
+
+.pp-kind-quote .pp-q::before {
+  content: '“';
+  margin-right: 4px;
+}
+
+.pp-kind-quote .pp-q::after {
+  content: '”';
+  margin-left: 4px;
+}
+
+.pp-kind-quote .pp-a {
+  margin-top: 14px;
+  font-size: 18px;
+  font-weight: 500;
+  text-align: right;
+  color: var(--ink-soft);
+}
+
+/* secrets */
+.pp-kind-secret .pp-q {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--red-dark);
+}
+
+.pp-kind-secret .pp-a {
+  margin-top: 12px;
+  font-size: 23px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* room under the note for the TOP SECRET stamp so it never covers the text */
+.pp-kind-secret .pp-slip {
+  padding-bottom: 54px;
+}
+
+.pp-stamp {
+  position: absolute;
+  right: 16px;
+  bottom: 14px;
+  padding: 2px 10px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--red);
+  border: 3px solid var(--red);
+  border-radius: 8px;
+  opacity: 0.7;
+  transform: rotate(-12deg);
+  animation: pp-stamp 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s both;
+}
+
+/* rarity ribbon */
+.pp-ribbon {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  padding: 6px 24px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.35);
+  background: var(--green);
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  transform: translateX(-50%) rotate(-2deg);
+}
+
+.pp-ribbon::before,
+.pp-ribbon::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  width: 20px;
+  height: calc(100% - 4px);
+  background: var(--green-dark);
+}
+
+.pp-ribbon::before {
+  left: -21px;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 35% 50%);
+}
+
+.pp-ribbon::after {
+  right: -21px;
+  clip-path: polygon(0 0, 100% 0, 65% 50%, 100% 100%, 0 100%);
+}
+
+.pp-joke--rare .pp-ribbon {
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  background: linear-gradient(180deg, #ffe58a, var(--gold));
+}
+
+.pp-joke--rare .pp-ribbon::before,
+.pp-joke--rare .pp-ribbon::after {
+  background: var(--gold-dark);
+}
+
+.pp-joke--legendary .pp-ribbon {
+  background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #c77dff, #ff6b6b);
+  background-size: 300% 100%;
+  animation: pp-rainbow 2.6s linear infinite;
+}
+
+.pp-joke--legendary .pp-ribbon::before,
+.pp-joke--legendary .pp-ribbon::after {
+  background: #9a5bd6;
+}
+
+/* NEW! / duplicate stickers */
+.pp-sticker {
+  position: absolute;
+  z-index: 3;
+}
+
+.pp-sticker--new {
+  top: -2px;
+  right: -14px;
+  width: 92px;
+  height: 92px;
+  background: var(--ink);
+  --pp-tilt: 14deg;
+  animation: pp-stamp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both;
+}
+
+.pp-sticker--new > span {
+  position: absolute;
+  inset: 4px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.4);
+  background: radial-gradient(circle at 40% 35%, #ff7682, var(--red) 60%);
+}
+
+.pp-sticker--dupe {
+  top: 8px;
+  right: -12px;
+  max-width: 150px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--ink);
+  background: var(--ice);
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  --pp-tilt: 8deg;
+  animation: pp-stamp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both;
+}
+
+/* actions + reward */
+.pp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.pp-btn--next {
+  color: #fff;
+  background: var(--green);
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.35);
+  animation: pp-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.pp-joke:not(.is-revealed) .pp-btn--next {
+  display: none;
+}
+
+.pp-btn--read.is-speaking {
+  animation: pp-nudge 0.5s ease-in-out 3;
+}
+
+.pp-btn--read.is-muted {
+  color: var(--ink-soft);
+  background: #e9e4f2;
+}
+
+.pp-reward {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.pp-reward > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 16px 3px 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--gold);
+  background: var(--ink);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  animation: pp-pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.55s backwards;
+}
+
+.pp-coin {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #3a2a12;
+  background: radial-gradient(circle, #ffe07a 0 52%, #f0b22a 53% 63%, #ffd560 64%);
+  box-shadow: inset -2px -2px 0 rgba(214, 140, 16, 0.75), inset 2px 2px 0 rgba(255, 255, 255, 0.7);
+  animation: pp-coin-spin 2.4s ease-in-out 1s infinite;
+}
+
+.pp-coin::after {
+  content: '★';
+  font-size: 12px;
+  line-height: 1;
+  color: #d8890c;
+}
+
+/* sparkles around rare / legendary cards */
+.pp-spark {
+  position: absolute;
+  z-index: 4;
+  font-size: 22px;
+  line-height: 1;
+  color: #fff3b0;
+  text-shadow: 0 0 8px rgba(255, 217, 61, 0.9);
+  pointer-events: none;
+  animation: pp-twinkle 1.6s ease-in-out infinite;
+}
+
+/* ---------- unlock celebration ---------- */
+
+.pp-unlock {
+  position: relative;
+  width: min(440px, 100%);
+  margin: auto;
+  padding: 24px 26px 24px;
+  text-align: center;
+  border: 7px solid transparent;
+  border-radius: 30px;
+  background: linear-gradient(180deg, #fffdf6, var(--paper)) padding-box, var(--candy-stripe) border-box;
+  box-shadow: 0 0 0 3px var(--ink), 0 9px 0 3px rgba(42, 27, 61, 0.42), 0 24px 50px rgba(0, 0, 0, 0.45);
+  animation: pp-drop-in 0.75s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.pp-unlock-kicker {
+  display: inline-block;
+  padding: 4px 16px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(42, 27, 61, 0.35);
+  background: var(--red);
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  box-shadow: var(--shadow-sm);
+  transform: rotate(-2deg);
+}
+
+.pp-unlock-badge {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 150px;
+  height: 150px;
+  margin: 8px auto 2px;
+}
+
+.pp-unlock-rays {
+  position: absolute;
+  inset: -34px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 201, 74, 0.6) 0 12deg, transparent 12deg 24deg);
+  -webkit-mask: radial-gradient(circle, #000 22%, transparent 70%);
+  mask: radial-gradient(circle, #000 22%, transparent 70%);
+  animation: pp-spin 10s linear infinite;
+}
+
+.pp-unlock-disc {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  border-radius: 50%;
+  border: 4px solid var(--ink);
+  background: radial-gradient(circle at 35% 30%, #fff 0 16%, #ffe07a 17% 64%, var(--gold-dark) 65%);
+  box-shadow: 0 6px 0 rgba(42, 27, 61, 0.4);
+  animation: pp-pop-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.25s backwards;
+}
+
+.pp-unlock-icon {
+  font-size: 64px;
+  line-height: 1;
+  animation: pp-icon-party 1.4s ease-in-out 0.8s infinite;
+}
+
+.pp-unlock-name {
+  margin: 6px 0 4px;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.pp-unlock-desc {
+  margin: 0 0 12px;
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--ink-soft);
+}
+
+.pp-unlock-count {
+  display: inline-block;
+  padding: 4px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--ice);
+  border: 2.5px solid var(--ink);
+  border-radius: 999px;
+}
+
+.pp-unlock-tip {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.pp-unlock .pp-btn--go {
+  margin-top: 18px;
+  padding: 12px 36px;
+  font-size: 22px;
+  background: var(--red);
+}
+
+.pp-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pp-confetti i {
+  position: absolute;
+  top: -24px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  animation: pp-confetti-fall var(--dur, 3s) linear var(--delay, 0s) infinite;
+}
+
+.pp-confetti i.is-round {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.pp-confetti i.is-ribbon {
+  width: 5px;
+  height: 22px;
+}
+
+/* ---------- small screens ---------- */
+
+@media (max-width: 520px) {
+  .pp-slip {
+    padding: 30px 22px 28px;
+  }
+
+  .pp-q {
+    font-size: 21px;
+  }
+
+  .pp-a {
+    font-size: 22px;
+  }
+
+  .pp-btn {
+    font-size: 17px;
+    padding: 9px 18px;
+  }
+
+  .pp-sticker--new {
+    top: 14px;
+    width: 72px;
+    height: 72px;
+    right: -6px;
+  }
+
+  .pp-sticker--new > span {
+    font-size: 18px;
+  }
+
+  .pp-sticker--dupe {
+    top: 34px;
+    right: -4px;
+    max-width: 112px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .pp-banner {
+    gap: 9px;
+    padding: 11px 14px 7px 7px;
+    border-radius: 16px;
+  }
+
+  .pp-banner-name {
+    font-size: 17px;
+  }
+
+  .pp-banner-detail {
+    font-size: 13px;
+  }
+
+  .pp-banner-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 23px;
+  }
+}
+
+/* Banner dock, matching hud.css: on short or narrow screens the prompt drops
+   to bottom 26px, the hints hide and the radar shrinks to 140px. */
+@media (max-width: 760px), (max-height: 540px) {
+  .pp-banners {
+    bottom: 90px; /* prompt: bottom 26px, ~49px tall, floats 5px */
+    width: min(460px, calc(100vw - 344px));
+  }
+}
+
+/* Short windows: the kicker line ("Wow!") is pure decoration, so drop it and
+   slim the banner down to keep it in the bottom third, well under Pip.
+   (Portrait phones keep their own sizes from the 520px block above.) */
+@media (max-height: 640px) and (min-width: 521px) {
+  .pp-banner {
+    padding-top: 11px;
+    padding-bottom: 7px;
+  }
+
+  .pp-banner-kicker {
+    display: none;
+  }
+
+  .pp-banner-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 25px;
+  }
+
+  .pp-banner-name {
+    font-size: 19px;
+  }
+
+  .pp-banner-detail {
+    font-size: 14px;
+  }
+}
+
+/* When the screen is too narrow for a centred prompt, hud.css lifts the
+   prompt above the radar, so the banner takes the free bottom-left corner
+   (hints are hidden here) and stops short of the 140px radar. */
+@media (max-width: 640px) {
+  .pp-banners {
+    left: 10px;
+    right: 166px;
+    bottom: 34px;
+    width: auto;
+    margin: 0;
+    justify-items: start;
+  }
+
+  .pp-banner {
+    min-width: 0;
+    transform-origin: 0 100%;
+  }
+}
+
+/* Touch screens: hud.js puts a round Slide button just left of the small
+   radar (right 170-242px, bottom ~67-150px). Dock the banner bottom-left so
+   it stays clear of that thumb button; only on screens too narrow for a
+   ~300px banner does it overlap it (the banner is click-through anyway). */
+@media (max-width: 760px), (max-height: 540px) {
+  #hud:has(.pip-hud.is-touch) ~ #popups .pp-banners {
+    left: 10px;
+    right: clamp(166px, calc(100vw - 310px), 252px);
+    width: auto;
+    margin: 0;
+    justify-items: start;
+  }
+
+  #hud:has(.pip-hud.is-touch) ~ #popups .pp-banner {
+    min-width: 0;
+    transform-origin: 0 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pp-rays,
+  .pp-unlock-rays,
+  .pp-slip-wrap,
+  .pp-reveal,
+  .pp-coin,
+  .pp-unlock-icon,
+  .pp-spark,
+  .pp-confetti i {
+    animation: none;
+  }
+
+  .pp-confetti {
+    display: none;
+  }
+
+  .pp-banner {
+    transition: none;
+    animation: pp-fade-in 0.3s ease-out both;
+  }
+
+  .pp-banner.is-out {
+    animation: pp-fade-out 0.35s ease-in both;
+  }
+
+  .pp-banners .pp-banner-icon {
+    animation: none;
+  }
+}
+
+/* ---------- keyframes ---------- */
+
+@keyframes pp-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pp-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes pp-card-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-14deg) translateY(60px);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.08) rotate(3deg);
+  }
+  78% {
+    transform: scale(0.97) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pp-card-out {
+  to {
+    opacity: 0;
+    transform: scale(0.7) translateY(40px) rotate(6deg);
+  }
+}
+
+@keyframes pp-drop-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-70vh) rotate(-8deg);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(14px) rotate(2deg) scale(1.02, 0.96);
+  }
+  80% {
+    transform: translateY(-6px) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pp-sway {
+  0%,
+  100% {
+    transform: rotate(-1.6deg) translateY(0);
+  }
+  50% {
+    transform: rotate(-0.4deg) translateY(-5px);
+  }
+}
+
+@keyframes pp-answer-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3) translateY(14px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.14) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pp-nudge {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-3px) rotate(-2deg);
+  }
+  75% {
+    transform: translateY(-3px) rotate(2deg);
+  }
+}
+
+@keyframes pp-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pp-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(2.6) rotate(calc(var(--pp-tilt, 0deg) - 30deg));
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.88) rotate(var(--pp-tilt, 0deg));
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(var(--pp-tilt, 0deg));
+  }
+}
+
+@keyframes pp-rainbow {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes pp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* banners pop up from the bottom edge and sink back down (never through the
+   middle of the screen) */
+@keyframes pp-banner-in {
+  0% {
+    opacity: 0;
+    transform: translateY(90px) scale(0.8, 1.15);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1.04, 0.94);
+  }
+  75% {
+    transform: translateY(3px) scale(0.99, 1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pp-banner-out {
+  0% {
+    opacity: 1;
+    transform: none;
+  }
+  30% {
+    transform: translateY(-6px) scale(1.02, 0.96);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(70px) scale(0.85);
+  }
+}
+
+@keyframes pp-boing {
+  0% {
+    transform: scale(0.2, 0.2) translateY(30px);
+  }
+  40% {
+    transform: scale(0.85, 1.3) translateY(-8px);
+  }
+  60% {
+    transform: scale(1.18, 0.85);
+  }
+  80% {
+    transform: scale(0.95, 1.06);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes pp-droop {
+  0% {
+    transform: scale(0.3) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.1) rotate(-14deg);
+  }
+  75% {
+    transform: scale(1) rotate(8deg) translateY(3px);
+  }
+  100% {
+    transform: rotate(-4deg) translateY(2px);
+  }
+}
+
+@keyframes pp-icon-party {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg) scale(1);
+  }
+  30% {
+    transform: translateY(-10px) rotate(6deg) scale(1.08, 0.94);
+  }
+  55% {
+    transform: translateY(0) rotate(0deg) scale(1.1, 0.9);
+  }
+  75% {
+    transform: translateY(-3px) rotate(-3deg) scale(0.97, 1.04);
+  }
+}
+
+@keyframes pp-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.6) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2) rotate(45deg);
+  }
+}
+
+@keyframes pp-coin-spin {
+  0%,
+  70%,
+  100% {
+    transform: rotateY(0deg);
+  }
+  85% {
+    transform: rotateY(180deg) scale(1.1);
+  }
+}
+
+@keyframes pp-confetti-fall {
+  0% {
+    transform: translate3d(0, -24px, 0) rotate(0deg);
+  }
+  100% {
+    transform: translate3d(var(--drift, 30px), 115vh, 0) rotate(var(--spin, 720deg));
+  }
+}
