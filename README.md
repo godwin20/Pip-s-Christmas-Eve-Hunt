@@ -86,7 +86,10 @@ tests against the emulators.
 
 ## Testing shortcuts
 
-Open http://localhost:5173/?debug=1 for these keys:
+While `npm run dev` or `npm run dev:cloud` is running, add `?debug=1` to the
+address (e.g. http://localhost:5173/?debug=1) for these keys. They only exist
+on the development server: production builds, including the live site, leave
+them out.
 
 | Key | Effect |
 |---|---|

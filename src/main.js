@@ -25,7 +25,10 @@ import { createScreens } from './ui/screens.js';
 import { createCloud } from './cloud/cloud.js';
 import { ensureProfile } from './cloud/merge.js';
 
-const DEBUG = new URLSearchParams(location.search).has('debug');
+// Dev server only: Vite turns import.meta.env.DEV into `false` in production
+// builds, so the debug keys and window.__game are stripped from the live game
+// and ?debug=1 can't be used to pad the leaderboard.
+const DEBUG = import.meta.env.DEV && new URLSearchParams(location.search).has('debug');
 const INTERACT_RANGE = 2.4;
 const CRACKER_COUNT = 15;
 const BASE_PRESENTS = 10;
