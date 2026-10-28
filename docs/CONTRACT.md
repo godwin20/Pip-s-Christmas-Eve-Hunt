@@ -4,7 +4,10 @@ This is the single source of truth for how the modules fit together. Every modul
 must export **exactly** the names and shapes below so `src/main.js` can wire them.
 Plain JavaScript ES modules, no TypeScript, no extra npm packages. `three` is
 installed (v0.186) — import as `import * as THREE from 'three'`. Addons are at
-`three/addons/...` if truly needed (avoid if possible).
+`three/addons/...` if truly needed (avoid if possible). The only other packages
+are Firebase (docs/CLOUD.md) and, for the installable app (`src/core/pwa.js`
+below), `vite-plugin-pwa` + `workbox-window` (build-time) and
+`@fontsource/fredoka` (the self-hosted menu font, imported by main.js).
 
 ## Game feel
 Fun, cute and cosy. Pip is a round little penguin in a snowy night-time island
@@ -237,11 +240,65 @@ Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins t
 - Surprise banner: big icon + name + detail sliding in from top, auto-hides.
 - Unlock: celebratory card with icon, name, desc, confetti CSS.
 
+### `src/core/pwa.js` (installable app, offline play, updates)
+The web app manifest, icons (`public/icons/`) and the Workbox service worker are
+set up in `vite.config.js` (vite-plugin-pwa, `registerType: 'prompt'`). The
+service worker precaches every built file (the game, the lazy Firebase chunk,
+the Fredoka woff2 files, the icons) and has **no** runtime caching, so Firebase
+and Google requests always go to the network. Paths stay relative (`base: './'`):
+`sw.js`, its scope and the manifest's `start_url` / `scope` all resolve to the
+folder the game is served from (the GitHub Pages sub-path).
+
+Pure helpers (no side effects on import, so screens.js imports them too):
+`isInAppBrowser(ua?)`, `isIOS(ua?, maxTouchPoints?)` (iPadOS's desktop user agent
+counts), `isIPad(ua?, maxTouchPoints?)` (the steps card's Share button sits at
+the top right there), `isIOSSafari(ua?, maxTouchPoints?)` (not Chrome/Firefox/Edge/Google app
+for iOS, not an in-app browser), `isStandalone(win?)` (display-mode standalone,
+fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`).
+
+`export function createPwa({ onChange })` →
+```
+{ start()                      /* registers the service worker (production builds only) */,
+  updateReady,                 /* a new version is waiting */
+  applyUpdate()                /* activate it and reload; menus only */,
+  offlineReady,                /* the game is cached (first install) */
+  canInstall,                  /* Chrome/Edge sent beforeinstallprompt (default prevented); never in an in-app browser */
+  promptInstall()              /* → Promise<'accepted'|'dismissed'|'unavailable'> */,
+  canAddToHomeScreen,          /* iPhone/iPad Safari in a tab: show the steps */
+  separateAppStorage,          /* iPhone/iPad Home Screen app (navigator.standalone or display-mode standalone): storage apart from Safari */
+  isStandalone(), isIOS(), isInAppBrowser(),
+  onChange                     /* called (async) whenever any of the above changes */ }
+```
+- main.js creates it before the screens (the `beforeinstallprompt` listener must
+  be in place early), passes it as `deps.pwa` and wires `onChange` to
+  `screens.pwaChanged()`; `start()` runs at boot after `cloud.start()`.
+- Updates are checked when the page becomes visible again and hourly (at most
+  once a minute). A version activated from another tab never reloads this page
+  by itself: the menus offer "Refresh" again, so a night is never interrupted.
+- screens.js shows everything, and only on menus: the update prompt and the
+  one-time "ready to play offline" note on title / results / shop / gallery /
+  leaderboard (never during a night, its pause menu or the gallery peeked at
+  from it); "📲 Install" or "📲 Add to Home Screen" (an in-page steps card) on the
+  title's bottom line next to "Reset progress" and "Privacy"; nothing install-
+  related when already running as an app. In the iPhone/iPad Home Screen app
+  the account card (and the title's sign-in line) explain that signing in with
+  Google there too brings a Google account's progress across, and to keep
+  playing in Safari if signing in doesn't finish (docs/CLOUD.md, "Home Screen
+  app on iPhone and iPad").
+- iOS meta: `apple-mobile-web-app-status-bar-style` is `black`, not
+  `black-translucent` (deprecated; iOS 26.1+ draws a scrim over it). iOS reads
+  it only when the app is added, so changing it needs a reinstall.
+- Safe areas: `index.html` uses `viewport-fit=cover`; `styles.css` defines
+  `--safe-top/right/bottom/left` (`env(safe-area-inset-*)`). `#hud`, the menus'
+  stage, popup cards and banners stay inside them; the canvas and backdrops
+  fill the screen.
+
 ### `src/ui/screens.js` (+ `src/ui/screens.css`, imported by screens.js)
 `export function createScreens(root, deps)` with
-`deps = { getSave(), persist(), sfx, onStartNight(), onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged() }` →
+`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged() }` →
 ```
-{ showTitle(), showResults(summary), showShop(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */ }
+{ showTitle(), showResults(summary), showShop(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */,
+  refresh(), cloudChanged() /* docs/CLOUD.md */, pwaChanged() /* src/core/pwa.js */ }
 ```
 `summary = { seed, crackers, presents, coinsEarned, newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
 - **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step.

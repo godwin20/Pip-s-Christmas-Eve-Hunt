@@ -2,6 +2,12 @@
 // wires every module together: title → night → results → shop → next night.
 
 import * as THREE from 'three';
+// Fredoka, self-hosted (latin only): no third-party font request, and the
+// service worker precaches it, so the menus look right offline too.
+import '@fontsource/fredoka/latin-400.css';
+import '@fontsource/fredoka/latin-500.css';
+import '@fontsource/fredoka/latin-600.css';
+import '@fontsource/fredoka/latin-700.css';
 import './styles.css';
 import { createRng, randomSeed } from './core/rng.js';
 import { loadSave, writeSave, resetSave } from './core/save.js';
@@ -24,6 +30,7 @@ import { createPopups } from './ui/popups.js';
 import { createScreens } from './ui/screens.js';
 import { createCloud } from './cloud/cloud.js';
 import { ensureProfile } from './cloud/merge.js';
+import { createPwa } from './core/pwa.js';
 
 // Dev server only: Vite turns import.meta.env.DEV into `false` in production
 // builds, so the debug keys and window.__game are stripped from the live game
@@ -154,6 +161,10 @@ const cloud = createCloud({
   onStatus: () => screens.cloudChanged?.(),
 });
 
+// Offline play, "new version" and install hints (docs/CONTRACT.md). The
+// menus show them; nothing appears during a night.
+const pwa = createPwa({ onChange: () => screens.pwaChanged?.() });
+
 const screens = createScreens(document.getElementById('screens'), {
   getSave: () => save,
   persist: () => {
@@ -162,6 +173,7 @@ const screens = createScreens(document.getElementById('screens'), {
   },
   sfx,
   cloud,
+  pwa,
   onStartNight: () => startNight(),
   onResume: () => resume(),
   onGoHome: () => endNight(true),
@@ -795,6 +807,7 @@ hud.hide();
 screens.showTitle();
 requestAnimationFrame(frame);
 cloud.start();
+pwa.start();
 // best-effort: makes browsers less eager to clear the local save (and the guest sign-in)
 try {
   navigator.storage?.persist?.().catch(() => {});
@@ -803,5 +816,5 @@ try {
 }
 
 if (DEBUG) {
-  window.__game = { ctx, save, cloud, startNight, endNight, get state() { return state; } };
+  window.__game = { ctx, save, cloud, pwa, startNight, endNight, get state() { return state; } };
 }

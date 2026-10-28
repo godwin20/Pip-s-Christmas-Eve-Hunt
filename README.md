@@ -29,6 +29,35 @@ Then open http://localhost:5173.
 On touch screens: drag on the left side to move, drag on the right to look,
 tap to open things, and use the on-screen Pause and Slide buttons.
 
+## Install as an app
+
+The game can be installed like an app: it opens full screen from the home
+screen or desktop, and once it has loaded it plays offline too.
+
+- **Android, or Chrome / Edge on a computer:** tap **📲 Install** at the bottom
+  of the title screen (or use the browser's own install button).
+- **iPhone and iPad:** in Safari, tap **📲 Add to Home Screen** at the bottom of
+  the title screen for the steps (Share, then Add to Home Screen).
+
+On iPhone and iPad the Home Screen app keeps its own save, apart from Safari,
+so a guest starts fresh there. Sign in with Google (Leaderboard > Play on any
+device) in Safari and in the app to bring progress across. Google sign-in
+inside an iPhone Home Screen app is not yet tested on a real device (see
+docs/CLOUD.md, "Home Screen app on iPhone and iPad"); if it doesn't finish
+there, the app says to keep playing in Safari. Signing in, cloud
+saves and the leaderboard need the internet; nights played offline are saved
+on the device and sync later.
+
+When a new version is published, the menus offer "A new version of Pip's hunt
+is ready — Refresh" (never in the middle of a night).
+
+How it works: `vite.config.js` sets up the web app manifest and a Workbox
+service worker (vite-plugin-pwa) that precaches the built game, and
+`src/core/pwa.js` handles updates and the install links. Firebase and Google
+requests are never cached. The icons in `public/icons/` are drawn from the
+menus' CSS Pip. The service worker only exists in production builds
+(`npm run build`, `npm run preview`), not on `npm run dev`.
+
 ## What's in it
 
 - **Crackers:** 102 jokes, cosy quotes and legendary *Santa's Secret Notes*, in common, rare and legendary crackers.
@@ -39,11 +68,12 @@ tap to open things, and use the on-screen Pause and Slide buttons.
 - **Present Milestones:** rewards at 10 / 25 / 50 / 75 / 100 / 150 / 200 presents, switched on and off in the Wardrobe.
 - **Joke Gallery:** everything you've found, with read-aloud.
 
-Progress is saved in the browser (localStorage).
+Progress is saved in the browser (localStorage). The menu font (Fredoka) is
+bundled with the game, so it makes no requests to Google Fonts.
 
 ## Put it online
 
-Every push to `main` rebuilds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Players see the update within about 10 minutes.
+Every push to `main` rebuilds the game and publishes it to GitHub Pages (`.github/workflows/deploy.yml`). Players see the update within about 10 minutes: the game spots the new version when it starts or comes back into view (and hourly) and offers "Refresh" on its menus.
 
 The build is a plain static site with relative paths, so it also runs from any other web host or sub-folder.
 
@@ -107,5 +137,5 @@ them out.
 - `src/world/`: island, Pip, camera, collectables, companions, effects
 - `src/game/`: upgrades, milestones, surprises, crackers
 - `src/ui/`: HUD, radar, popups, menus
-- `src/core/`: rng, save, audio, input
+- `src/core/`: rng, save, audio, input, pwa (install, offline, updates)
 - `src/data/jokes.js`: all the jokes

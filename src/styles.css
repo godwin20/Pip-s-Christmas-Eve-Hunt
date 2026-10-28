@@ -31,6 +31,14 @@
 
   /* candy-stripe border used on cards and buttons */
   --candy-stripe: repeating-linear-gradient(45deg, var(--red) 0 10px, #fff 10px 20px);
+
+  /* Notch, rounded corners and home bar (viewport-fit=cover in index.html):
+     0 everywhere else. The canvas and backdrops fill the whole screen, while
+     buttons and text keep inside these. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
 }
 
 * {
@@ -69,6 +77,11 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* the whole HUD (timer, radar, touch buttons) sits inside the safe area */
+#hud {
+  inset: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 #hud > *,

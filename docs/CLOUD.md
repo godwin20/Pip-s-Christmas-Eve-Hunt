@@ -288,6 +288,29 @@ and Line. When the user agent shows one of those (or an Android WebView `wv`),
 the Google buttons are replaced by: "To sign in with Google, open this game in
 Safari or Chrome." Guest play and the leaderboard still work.
 
+### Home Screen app on iPhone and iPad
+(From the PWA research of 2026-10-27.) A game added to the iPhone / iPad Home
+Screen keeps its own storage, apart from Safari: nothing but cookies is copied
+when it is added, so the localStorage save and the Firebase session (IndexedDB)
+start fresh, as a new anonymous player. Only a Google account carries progress
+across. Inside such an app Firebase does not call `window.open`: it clicks a
+link to the auth handler instead and gets no window back, so it can't tell when
+the sheet is closed, and whether the result comes back on iOS 26 / 27 is
+unproven (it reportedly worked with the default `*.firebaseapp.com`
+`authDomain` on iOS 16.5; keep that `authDomain`).
+- The Google button stays, and never stays busy: after `CLOUD_TIMEOUT_MS` it
+  offers "Try again" (a second popup cancels the first silently).
+- The account card says the app keeps its own save, that signing in here too
+  brings a Google account's progress across, and to keep playing in Safari if
+  signing in doesn't finish here. Safari's week-long note is left out there
+  (Home Screen apps are exempt).
+- **Before release, try it on a real iPhone and iPad** (Home Screen app, guest
+  link and the "account already exists" switch). If the result never comes
+  back, treat `pwa.separateAppStorage` like an in-app browser in screens.js:
+  no Google button, and "On iPhone, Google sign-in doesn't work inside the Home
+  Screen app yet. Your progress here is saved on this iPhone. To use your
+  Google account, play Pip's hunt in Safari."
+
 ### Delete my data
 The facade gains `deleteEverything()`, which resolves `{ ok, error? }`:
 1. Delete `leaderboard/{uid}` and `players/{uid}`.

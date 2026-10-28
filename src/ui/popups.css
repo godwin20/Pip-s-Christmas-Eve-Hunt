@@ -14,7 +14,9 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 116px; /* clears the prompt (bottom 48px, ~58px tall, floats 5px) */
+  /* clears the prompt (bottom 48px, ~58px tall, floats 5px); the HUD sits
+     inside the safe area (styles.css), so the banners follow it */
+  bottom: calc(116px + var(--safe-bottom));
   z-index: 2;
   display: grid;
   justify-items: center;
@@ -158,7 +160,8 @@
   z-index: 5;
   display: flex;
   overflow: hidden auto;
-  padding: 20px 16px;
+  /* the backdrop fills the screen; the card keeps clear of the notch and home bar */
+  padding: calc(20px + var(--safe-top)) calc(16px + var(--safe-right)) calc(20px + var(--safe-bottom)) calc(16px + var(--safe-left));
   font-family: var(--font);
   color: var(--ink);
   background: radial-gradient(circle at 50% 45%, rgba(255, 201, 74, 0.14), transparent 55%),
@@ -871,7 +874,7 @@
    to bottom 26px, the hints hide and the radar shrinks to 140px. */
 @media (max-width: 760px), (max-height: 540px) {
   .pp-banners {
-    bottom: 90px; /* prompt: bottom 26px, ~49px tall, floats 5px */
+    bottom: calc(90px + var(--safe-bottom)); /* prompt: bottom 26px, ~49px tall, floats 5px */
     width: min(460px, calc(100vw - 344px));
   }
 }
@@ -909,9 +912,9 @@
    (hints are hidden here) and stops short of the 140px radar. */
 @media (max-width: 640px) {
   .pp-banners {
-    left: 10px;
-    right: 166px;
-    bottom: 34px;
+    left: calc(10px + var(--safe-left));
+    right: calc(166px + var(--safe-right));
+    bottom: calc(34px + var(--safe-bottom));
     width: auto;
     margin: 0;
     justify-items: start;
@@ -929,7 +932,7 @@
    ~300px banner does it overlap it (the banner is click-through anyway). */
 @media (max-width: 760px), (max-height: 540px) {
   #hud:has(.pip-hud.is-touch) ~ #popups .pp-banners {
-    left: 10px;
+    left: calc(10px + var(--safe-left));
     right: clamp(166px, calc(100vw - 310px), 252px);
     width: auto;
     margin: 0;

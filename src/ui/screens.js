@@ -13,6 +13,7 @@ import { RARITY_COINS } from '../game/crackers.js';
 import { defaultSave } from '../core/save.js';
 import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
 import { PRIVACY_CONTACT } from '../cloud/config.js';
+import { isInAppBrowser, isIPad } from '../core/pwa.js';
 
 // ---------------------------------------------------------------------------
 // Static data
@@ -116,6 +117,18 @@ const DELETED_TEXT = 'All deleted. This device starts fresh with a new snow name
 const DELETED_KEPT_TEXT = 'Your saved data is deleted and this device starts fresh. To remove the Google sign-in too, sign in again and delete straight away.';
 const IN_APP_TEXT = 'To sign in with Google, open this game in Safari or Chrome.';
 const SAFARI_GUEST_TEXT = "On iPhone and iPad, Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.";
+// iPhone / iPad keep a Home Screen app's storage apart from Safari's tabs.
+// Only a Google account carries progress across, and Google sign-in inside a
+// Home Screen app is unproven on recent iOS, so the way back to Safari is
+// spelled out too.
+const HOME_APP_TEXT =
+  "This Home Screen app keeps its own save, apart from Safari, so a guest starts fresh here. Signed in with Google in Safari? Sign in here too to bring that progress across. If signing in doesn't finish here, keep playing in Safari instead.";
+const HOME_APP_LINE = 'Signed in with Google in Safari? Sign in here too';
+
+// PWA notices (update ready, offline ready) appear only on these menus: never
+// over a night, its pause menu or the gallery peeked at from it.
+const NOTICE_SCREENS = new Set(['title', 'results', 'shop', 'gallery', 'leaderboard']);
+const OFFLINE_NOTE_MS = 6000;
 
 // ---------------------------------------------------------------------------
 // Tiny DOM helpers
@@ -278,7 +291,7 @@ const EXTRA_CSS = `
   }
   .scr-shop .scr-page {
     max-height: calc(100vh - 60px);
-    max-height: calc(100dvh - 60px);
+    max-height: calc(100dvh - 60px - var(--safe-top) - var(--safe-bottom));
   }
   .scr-shop .scr-head {
     gap: 4px;
@@ -516,22 +529,6 @@ function deleteErrorText(err, timedOut) {
   return "Couldn't delete just now. Please try again.";
 }
 
-// Google refuses sign-in inside apps' own browsers (Instagram, Facebook,
-// TikTok, Snapchat, Line, X/Twitter) and in Android WebViews ('; wv)'), so
-// those get a "use Safari or Chrome" note instead of a button that can't work.
-function isInAppBrowser(ua) {
-  const s = typeof ua === 'string' ? ua : '';
-  return /Instagram|FBAN|FBAV|FB_IAB|FBIOS|FB4A|Snapchat|Twitter|\bLine\//.test(s) || /TikTok|musical_ly|Bytedance/i.test(s) || /\bAndroid\b.*;\s*wv\)/.test(s);
-}
-
-function userAgent() {
-  try {
-    return typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string' ? navigator.userAgent : '';
-  } catch {
-    return '';
-  }
-}
-
 // "For grown-ups: what is 47 × 6?": a 2-digit times a 1-digit number. The
 // give-aways (×1, ×2, 20 × 7, 33 × 3…) are left out, and a new question
 // never repeats the last one.
@@ -701,6 +698,10 @@ function sceneHTML(save, { crown = true, wave = true, extras = true } = {}) {
 </div>`;
 }
 
+// Safari's Share icon (a box with an arrow), for the "Add to Home Screen" steps.
+const SHARE_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9.5H6.5A1.5 1.5 0 0 0 5 11v8.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V11a1.5 1.5 0 0 0-1.5-1.5H16"/><path d="M12 14.5V3"/><path d="M8.5 6.5 12 3l3.5 3.5"/></svg>';
+
 function hollyHTML(cls = '') {
   return `<span class="scr-holly ${cls}" aria-hidden="true"><i></i><i></i><b></b><b></b><b></b></span>`;
 }
@@ -746,6 +747,13 @@ export function createScreens(root, deps = {}) {
     spareName: null, // shown if the save has no snow name yet (main.js gives one at boot)
     lastSummary: null,
     confirmReset: false,
+    homeHelp: false, // the title's "Add to Home Screen" steps are open (iPhone / iPad Safari)
+    // PWA notices: "Later" hides the update prompt until the next visit, and
+    // the offline note shows once
+    noticeLater: false,
+    offlineNoted: false,
+    offlineNoteUntil: 0,
+    refreshing: false, // "Refresh" was tapped; the page reloads soon
     privacyBack: 'title',
     privacy: null, // refs of the open privacy screen
     confirmDelete: false, // "Delete my saved data?" is up (privacy screen or account card)
@@ -889,8 +897,27 @@ export function createScreens(root, deps = {}) {
       return false;
     }
   };
-  // Fixed for the page's life, so it is read once.
-  const IN_APP = isInAppBrowser(userAgent());
+  // Fixed for the page's life, so it is read once. Google refuses sign-in
+  // inside apps' own browsers (src/core/pwa.js), so those get a "use Safari
+  // or Chrome" note instead of a button that can't work.
+  const IN_APP = isInAppBrowser();
+  // ---- PWA facade (src/core/pwa.js): optional, and every read is guarded ----
+  const pwa = () => {
+    try {
+      const p = deps.pwa;
+      return p && typeof p === 'object' ? p : null;
+    } catch {
+      return null;
+    }
+  };
+  // One of its flags (updateReady, canInstall…): false if missing or broken.
+  const pwaFlag = (name) => {
+    try {
+      return pwa()?.[name] === true;
+    } catch {
+      return false;
+    }
+  };
   state.gateUntil = readGateUntil(); // a question answered before a reload of this tab still counts
   const cloudBoards = () => {
     let list = null;
@@ -958,7 +985,10 @@ export function createScreens(root, deps = {}) {
   });
   const snow = h('div', { class: 'scr-snow', 'aria-hidden': 'true' }, h('i'), h('i'), h('i'));
   const stage = h('div', { class: 'scr-stage' });
-  el.append(snow, stage);
+  // PWA notices ("new version", "works offline"): beside the stage, so screen
+  // changes and rebuilds leave them (and a focused "Refresh") alone.
+  const notice = h('div', { class: 'scr-notice hidden', role: 'status' });
+  el.append(snow, stage, notice);
   if (host) host.appendChild(el);
   injectExtraCss();
 
@@ -991,7 +1021,10 @@ export function createScreens(root, deps = {}) {
     state.lb = null;
     state.privacy = null;
     state.confirmDelete = false;
-    if (name !== 'title') state.confirmReset = false;
+    if (name !== 'title') {
+      state.confirmReset = false;
+      state.homeHelp = false;
+    }
     el.className = `scr scr--${name}${wasHidden ? ' scr--in' : ''}`;
     let content;
     try {
@@ -1002,6 +1035,7 @@ export function createScreens(root, deps = {}) {
     }
     stage.replaceChildren(content);
     stage.scrollTop = 0;
+    renderNotice();
     const first = stage.querySelector('[data-autofocus]');
     if (first) {
       try {
@@ -1025,10 +1059,12 @@ export function createScreens(root, deps = {}) {
     state.lb = null;
     state.privacy = null;
     state.confirmReset = false;
+    state.homeHelp = false;
     state.confirmDelete = false;
     state.gate = null;
     el.className = 'scr hidden';
     stage.replaceChildren();
+    renderNotice();
     if (was !== null) {
       try {
         deps.onScreenChange?.(null);
@@ -1085,6 +1121,10 @@ export function createScreens(root, deps = {}) {
       case 'title':
         // Esc closes an open question; the title itself has nowhere to go back to
         if (closeGate()) break;
+        if (state.homeHelp) {
+          closeHomeHelp();
+          break;
+        }
         if (state.confirmReset) {
           state.confirmReset = false;
           renderResetArea();
@@ -1589,7 +1629,7 @@ export function createScreens(root, deps = {}) {
       const linking = op && op.kind === 'link' ? op : null;
       const line = linking
         ? { tone: 'info', text: linking.slow ? 'Still waiting for Google. If the window closed, press Try again.' : 'A Google window should pop up. Finish signing in there.' }
-        : note || { tone: '', text: !ready && offline ? 'Sign-in needs the internet. Progress is saved on this device.' : 'Keep your progress safe and play on any device' };
+        : note || { tone: '', text: !ready && offline ? 'Sign-in needs the internet. Progress is saved on this device.' : pwaFlag('separateAppStorage') ? HOME_APP_LINE : 'Keep your progress safe and play on any device' };
       kids = [
         googleButton(linking, { key: 'title-link', where: 'title' }),
         h('p', { class: 'scr-titleauth__line', 'data-tone': line.tone || null }, line.text),
@@ -1657,11 +1697,16 @@ export function createScreens(root, deps = {}) {
     );
   }
 
-  // "Reset progress" and "Privacy" share one line, so the title is no taller
-  // than before. Privacy is always there: its note covers this device's save
-  // too.
+  // "Reset progress", "Privacy" and the install link share one line, so the
+  // title is no taller than before. Privacy is always there: its note covers
+  // this device's save too.
   function renderResetArea() {
     if (!resetArea) return;
+    resetArea.setAttribute('data-install', installKind());
+    if (state.homeHelp) {
+      renderHomeHelp();
+      return;
+    }
     if (!state.confirmReset) {
       resetArea.replaceChildren(
         h(
@@ -1699,7 +1744,8 @@ export function createScreens(root, deps = {}) {
             },
             h('span', { 'aria-hidden': 'true' }, '🔒'),
             ' Privacy'
-          )
+          ),
+          installLink()
         )
       );
       return;
@@ -1747,6 +1793,207 @@ export function createScreens(root, deps = {}) {
     // on short windows the confirm buttons land below the fold
     const confirmBox = resetArea.firstElementChild;
     if (confirmBox && confirmBox.scrollIntoView) confirmBox.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  // ---- install as an app (src/core/pwa.js) ----
+
+  // 'install' when Chrome / Edge offered to install, 'home' on iPhone / iPad
+  // Safari (no install prompt there, so the steps instead), '' otherwise,
+  // including when the game already runs as an installed app.
+  function installKind() {
+    if (pwaFlag('canInstall')) return 'install';
+    if (pwaFlag('canAddToHomeScreen')) return 'home';
+    return '';
+  }
+
+  // A quiet link on the title's bottom line, never a pop-up.
+  function installLink() {
+    const kind = installKind();
+    if (!kind) return null;
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: 'scr-link',
+        'data-key': 'install',
+        onclick: () => {
+          play('click');
+          if (kind === 'install') {
+            startInstall();
+            return;
+          }
+          state.confirmReset = false;
+          // one question at a time on the title
+          if (gateHere('title')) {
+            state.gate = null;
+            renderTitleAuth();
+          }
+          state.homeHelp = true;
+          renderResetArea();
+        },
+      },
+      h('span', { 'aria-hidden': 'true' }, '📲'),
+      kind === 'install' ? ' Install' : ' Add to Home Screen'
+    );
+  }
+
+  // Opens the browser's own install dialog. The offer is used up either way,
+  // so pwaChanged() takes the link away meanwhile.
+  function startInstall() {
+    const p = pwa();
+    if (!p || typeof p.promptInstall !== 'function') return;
+    let result;
+    try {
+      result = p.promptInstall();
+    } catch (err) {
+      console.warn('[screens] install prompt failed', err);
+      return;
+    }
+    Promise.resolve(result)
+      .then((outcome) => {
+        if (outcome === 'accepted') play('unlock');
+      })
+      .catch(() => {});
+  }
+
+  // The steps for iPhone / iPad Safari, in place of the links (like the reset
+  // question). Safari tabs and the Home Screen app keep separate saves, so it
+  // says how to bring progress across.
+  function renderHomeHelp() {
+    const titleId = 'scr-homehelp-title';
+    const ok = button('Got it!', {
+      icon: '👍',
+      variant: 'green',
+      size: 'small',
+      key: 'home-ok',
+      onClick: () => {
+        play('click');
+        closeHomeHelp();
+      },
+    });
+    const share = h('span', { class: 'scr-homehelp__share', 'aria-hidden': 'true', html: SHARE_ICON_SVG });
+    const saveNote = cloud()
+      ? 'Good to know: the Home Screen app keeps its own save, apart from Safari, so a guest starts fresh there. To bring this progress across, a grown-up can sign in with Google here and again in the app.'
+      : 'The Home Screen app keeps its own save, apart from Safari, so Pip starts a fresh adventure there.';
+    resetArea.replaceChildren(
+      h(
+        'div',
+        { class: 'scr-confirm scr-homehelp', role: 'group', 'aria-labelledby': titleId },
+        h('p', null, h('b', { id: titleId }, 'Put Pip on your Home Screen')),
+        h(
+          'ol',
+          { class: 'scr-homehelp__steps' },
+          // Apple's wording (iOS 26 / 27): on iPhone, Share sits behind ••• in
+          // the default compact tab bar; on iPad it is at the top right
+          isIPad()
+            ? h('li', null, 'Tap ', h('b', null, 'Share'), ' ', share, ' at the top right.')
+            : h('li', null, 'Tap ', h('b', null, 'Share'), ' ', share, ". Don't see it? Tap ", h('b', null, '•••'), ' next to the address bar, then ', h('b', null, 'Share'), '.'),
+          h('li', null, 'Scroll down and tap ', h('b', null, 'Add to Home Screen'), '. Not there? Tap ', h('b', null, 'Edit Actions'), ' at the bottom to add it.'),
+          h('li', null, 'Leave ', h('b', null, 'Open as Web App'), ' on and tap ', h('b', null, 'Add'), '. Pip opens full screen and plays offline too!')
+        ),
+        h('p', { class: 'scr-homehelp__note' }, saveNote),
+        h('div', { class: 'scr-confirm__btns' }, ok)
+      )
+    );
+    focusEl(ok);
+    // on short windows the card lands below the fold
+    const card = resetArea.firstElementChild;
+    if (card && card.scrollIntoView) card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  function closeHomeHelp() {
+    state.homeHelp = false;
+    renderResetArea();
+    focusEl(resetArea && (resetArea.querySelector('[data-key="install"]') || resetArea.querySelector('[data-key="privacy"]')));
+  }
+
+  // ---- notices over the menus: "new version" and "works offline" ----
+
+  function noticeAllowed() {
+    if (!NOTICE_SCREENS.has(state.current)) return false;
+    // the gallery peeked at from the pause menu still belongs to the night
+    return !(state.current === 'gallery' && state.galleryBack === 'pause');
+  }
+
+  // The update prompt (until "Not now") or the one-time offline note, on the
+  // menus in NOTICE_SCREENS only. Patched in place, so focus stays put.
+  function renderNotice() {
+    const allowed = state.current !== null && noticeAllowed();
+    let kind = '';
+    if (allowed && pwaFlag('updateReady') && !state.noticeLater) {
+      kind = 'update';
+      state.offlineNoted = true; // old news next to a new version
+    } else if (allowed && pwaFlag('offlineReady') && !state.offlineNoted) {
+      state.offlineNoted = true;
+      state.offlineNoteUntil = Date.now() + OFFLINE_NOTE_MS;
+      setTimeout(renderNotice, OFFLINE_NOTE_MS + 50);
+      kind = 'offline';
+    } else if (allowed && Date.now() < state.offlineNoteUntil) {
+      kind = 'offline';
+    }
+    const key = `${kind}|${state.refreshing ? 1 : 0}`;
+    if (notice.getAttribute('data-key') === key) return;
+    notice.setAttribute('data-key', key);
+    notice.setAttribute('data-kind', kind);
+    notice.classList.toggle('hidden', !kind);
+    if (kind === 'update') {
+      const refresh = button(state.refreshing ? 'Refreshing…' : 'Refresh', {
+        icon: state.refreshing ? '❄' : '🔄',
+        variant: 'gold',
+        size: 'small',
+        key: 'pwa-refresh',
+        cls: state.refreshing ? 'is-busy' : '',
+        onClick: () => applyUpdate(),
+      });
+      if (state.refreshing) refresh.setAttribute('aria-disabled', 'true');
+      const later = h(
+        'button',
+        {
+          type: 'button',
+          class: 'scr-notice__close',
+          'aria-label': 'Not now',
+          title: 'Not now',
+          'data-key': 'pwa-later',
+          onclick: () => {
+            play('click');
+            state.noticeLater = true;
+            renderNotice();
+            focusEl(stage.querySelector('[data-autofocus]'));
+          },
+        },
+        '✕'
+      );
+      if (state.refreshing) later.setAttribute('aria-disabled', 'true');
+      keepFocus(notice, () =>
+        notice.replaceChildren(
+          h('span', { class: 'scr-notice__icon', 'aria-hidden': 'true' }, '✨'),
+          h('span', { class: 'scr-notice__text' }, "A new version of Pip's hunt is ready", h('span', { class: 'scr-notice__dash' }, ' —')),
+          refresh,
+          later
+        )
+      );
+    } else if (kind === 'offline') {
+      notice.replaceChildren(
+        h('span', { class: 'scr-notice__icon', 'aria-hidden': 'true' }, '🌟'),
+        h('span', { class: 'scr-notice__text' }, "Pip's hunt is ready to play offline too!")
+      );
+    } else {
+      notice.replaceChildren();
+    }
+  }
+
+  // "Refresh": the new version takes over and the page reloads. Menus only,
+  // so the save is already written.
+  function applyUpdate() {
+    if (state.refreshing) return;
+    play('click');
+    state.refreshing = true;
+    renderNotice();
+    try {
+      pwa()?.applyUpdate?.();
+    } catch (err) {
+      console.error('[screens] applyUpdate failed', err);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -3260,13 +3507,18 @@ export function createScreens(root, deps = {}) {
     } else {
       signIn = h('div', { class: 'scr-lbacct__btns' }, googleButton(linking, { key: 'link', where: 'leaderboard' }));
     }
+    // a Home Screen app on iPhone / iPad: a guest here started fresh, apart
+    // from Safari, and Google sign-in is how progress comes across
+    const homeApp = pwaFlag('separateAppStorage');
     return [
       h('p', { class: 'scr-lbacct__for' }, 'For grown-ups'),
       h('p', null, 'Sign in with Google to keep this progress safe. Sign in with the same account on another phone, tablet or computer to carry on there.'),
+      homeApp ? h('p', { class: 'scr-lbacct__note scr-lbacct__homeapp' }, h('span', { 'aria-hidden': 'true' }, '📲 '), HOME_APP_TEXT) : null,
       h('p', { class: 'scr-lbacct__small' }, 'The leaderboard only ever shows the snow name, never a real name or email.'),
       signIn,
       note ? accountNote(note) : null,
-      h('p', { class: 'scr-lbacct__small scr-lbacct__safari' }, SAFARI_GUEST_TEXT),
+      // Safari's week-long limit doesn't apply to Home Screen apps
+      homeApp ? null : h('p', { class: 'scr-lbacct__small scr-lbacct__safari' }, SAFARI_GUEST_TEXT),
       accountLinks(lb),
     ];
   }
@@ -3461,8 +3713,9 @@ export function createScreens(root, deps = {}) {
     play('click');
     state.gate = { at: where, visit: state.visit, ...gateQuestion(null), value: '', passed: false, msg: null };
     // one question at a time
-    if (where === 'title' && state.confirmReset) {
+    if (where === 'title' && (state.confirmReset || state.homeHelp)) {
       state.confirmReset = false;
+      state.homeHelp = false;
       renderResetArea();
     }
     state.confirmDelete = false;
@@ -4266,6 +4519,19 @@ export function createScreens(root, deps = {}) {
     }
   }
 
+  // main.js calls this from pwa.onChange (src/core/pwa.js): the notice and
+  // the title's install link are patched in place, keeping focus.
+  function pwaChanged() {
+    try {
+      renderNotice();
+      if (state.current === 'title' && resetArea && !state.confirmReset && !state.homeHelp && resetArea.getAttribute('data-install') !== installKind()) {
+        keepFocus(resetArea, renderResetArea, () => resetArea.querySelector('[data-key="privacy"]'));
+      }
+    } catch (err) {
+      console.error('[screens] pwaChanged failed', err);
+    }
+  }
+
   // main.js calls this from the cloud's onStatus. It only patches words and
   // the account card in place: no rebuild, no focus change.
   function cloudChanged() {
@@ -4300,6 +4566,7 @@ export function createScreens(root, deps = {}) {
     hideAll,
     refresh,
     cloudChanged,
+    pwaChanged,
     destroy,
     el,
     get current() {
