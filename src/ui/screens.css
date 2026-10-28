@@ -5454,6 +5454,369 @@ p .scr-key {
 }
 
 /* ==========================================================================
+   FEEDBACK: the card over the title / results, its links and the thank-you
+   ========================================================================== */
+
+/* "⭐ Feedback" (title line, end of the results); after a send it only
+   says thanks, so it stops looking like a link */
+.scr-fblink[aria-disabled='true'] {
+  text-decoration: none;
+  cursor: default;
+}
+
+.scr-link.scr-fblink[aria-disabled='true']:hover {
+  color: rgba(244, 248, 255, 0.72);
+}
+
+.scr-textlink.scr-fblink[aria-disabled='true']:hover {
+  color: var(--ink-soft);
+}
+
+.scr-fbline {
+  margin: 14px 0 0;
+  text-align: center;
+}
+
+/* over the screen, which stays in view behind a darker night; the card is
+   centred when it fits and scrolls from its top when it doesn't */
+.scr-modal {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: flex;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: calc(38px + var(--safe-top)) calc(12px + var(--safe-right)) calc(16px + var(--safe-bottom)) calc(12px + var(--safe-left));
+  background: rgba(15, 21, 51, 0.6);
+  animation: scr-fade 0.25s ease-out backwards;
+}
+
+.scr-fb {
+  width: min(520px, 100%);
+  margin: auto;
+  padding: 14px 18px 18px;
+}
+
+.scr-fb__x {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+}
+
+.scr-fb__x[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* the ribbon sits on the card's top edge, like the pages' banners */
+.scr-banner.scr-fb__banner {
+  margin-top: -38px;
+}
+
+.scr-card__sub.scr-fb__sub {
+  margin: 6px 0 8px;
+}
+
+.scr-fb__fields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.scr-fb__group {
+  min-width: 0;
+  margin: 0;
+  padding: 4px 8px 10px;
+  border: 2px dashed rgba(42, 27, 61, 0.18);
+  border-radius: 16px;
+  transition: background 0.2s;
+}
+
+.scr-fb__legend {
+  padding: 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.scr-fb__legend small {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* "Please pick…": the group that still needs an answer */
+.scr-fb__group[data-missing] {
+  border-color: var(--red);
+  background: rgba(255, 227, 236, 0.7);
+}
+
+.scr-fb__group.is-nudge {
+  animation: scr-wiggle-sm 0.5s ease-in-out;
+}
+
+.scr-fb__opts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* the real radio / checkbox stays under its chip for keyboards and screen
+   readers; the label around it is the tap target */
+.scr-fb__star,
+.scr-fb__chip {
+  position: relative;
+  cursor: pointer;
+}
+
+.scr-fb__input {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* big tappable stars */
+.scr-fb__stars .scr-fb__opts {
+  gap: 0 4px;
+}
+
+.scr-fb__star {
+  display: inline-grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+}
+
+.scr-fb__glyph {
+  display: block;
+  padding: 0 4px;
+  border-radius: 12px;
+  color: #e6dff2;
+  font-size: 2.6rem;
+  line-height: 1.1;
+  -webkit-text-stroke: 2px var(--ink);
+  text-shadow: 0 3px 0 var(--ink);
+  transition:
+    scale 0.12s,
+    color 0.12s;
+}
+
+.scr-fb__star.is-on .scr-fb__glyph {
+  color: var(--gold);
+}
+
+.scr-fb__star:hover .scr-fb__glyph,
+.scr-fb__input:checked + .scr-fb__glyph {
+  scale: 1.14;
+}
+
+/* topic and quick-note chips (like the gallery's filter chips) */
+.scr-fb__face {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 42px;
+  padding: 6px 14px;
+  border: var(--line);
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink);
+  font: 600 0.95rem/1.15 var(--font);
+  transition:
+    translate 0.12s,
+    background 0.12s;
+}
+
+.scr-fb__chip:hover .scr-fb__face {
+  background: #fff8e6;
+}
+
+.scr-fb__input:checked + .scr-fb__face {
+  translate: 0 -2px;
+  background: linear-gradient(#47c48f, var(--green));
+  box-shadow: 0 5px 0 var(--ink);
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+}
+
+/* quick notes: blue, with a tick, so they read as "as many as you like" */
+.scr-fb__quick .scr-fb__input:checked + .scr-fb__face {
+  background: linear-gradient(#6aa6ff, #3a7fe0);
+}
+
+.scr-fb__quick .scr-fb__input:checked + .scr-fb__face::after {
+  content: '✓';
+  margin-left: 2px;
+  font-weight: 700;
+}
+
+.scr-fb__input:disabled + .scr-fb__face {
+  opacity: 0.45;
+  box-shadow: 0 2px 0 var(--ink);
+  cursor: not-allowed;
+}
+
+.scr-fb__input:focus-visible + .scr-fb__glyph,
+.scr-fb__input:focus-visible + .scr-fb__face {
+  outline: 4px solid var(--gold);
+  outline-offset: 3px;
+}
+
+/* the grown-ups' note: a link, their question, or the field */
+.scr-fb__note {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 30px;
+}
+
+.scr-fb__note .scr-gate {
+  padding: 8px 10px;
+  border: 2px dashed rgba(42, 27, 61, 0.2);
+  border-radius: 14px;
+  background: var(--sky);
+}
+
+.scr-fb__notelabel {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.scr-fb__notehint {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.25;
+}
+
+/* 1rem+ keeps iOS from zooming the page in when the field gets focus */
+.scr-fb__text {
+  width: 100%;
+  min-height: 84px;
+  padding: 8px 10px;
+  border: var(--line);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: inset 0 3px 0 rgba(42, 27, 61, 0.1);
+  color: var(--ink);
+  font: 500 1.02rem/1.35 var(--font);
+  resize: vertical;
+}
+
+.scr-fb__countrow {
+  justify-self: end;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.scr-fb__count[data-full] {
+  color: var(--red-dark);
+}
+
+.scr-fb__msg {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--butter);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.scr-fb__msg[data-tone='error'] {
+  background: var(--blush);
+  color: var(--red-dark);
+}
+
+.scr-fb__msg[hidden] {
+  display: none;
+}
+
+.scr-fb__btns {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+
+/* "Thank you! Pip's elves are reading it": bottom centre, then gone */
+.scr-toast {
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  bottom: calc(18px + var(--safe-bottom));
+  width: max-content;
+  max-width: calc(100% - 24px - var(--safe-left) - var(--safe-right));
+  translate: -50% 0;
+  pointer-events: none;
+}
+
+.scr-toast__bubble {
+  display: block;
+  padding: 10px 18px;
+  border: var(--line);
+  border-radius: 18px;
+  background: var(--mint);
+  box-shadow:
+    0 4px 0 var(--ink),
+    0 12px 26px rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  font: 600 1rem/1.3 var(--font);
+  text-align: center;
+  animation: scr-toast-in 0.45s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+@keyframes scr-toast-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+
+/* phones: a little snugger, still big enough for small fingers */
+@media (max-width: 420px) {
+  .scr-fb {
+    padding: 12px 10px 16px;
+  }
+
+  .scr-fb__star {
+    width: 50px;
+    height: 50px;
+  }
+
+  .scr-fb__glyph {
+    font-size: 2.35rem;
+  }
+
+  .scr-fb__opts {
+    gap: 7px;
+  }
+
+  .scr-fb__face {
+    min-height: 40px;
+    padding: 5px 11px;
+    font-size: 0.9rem;
+  }
+}
+
+/* ==========================================================================
    Responsive
    ========================================================================== */
 

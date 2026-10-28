@@ -12,6 +12,7 @@ import {
 } from './config.js';
 import { mergeSaves, toCloudSave, boardScores, ensureProfile, sameSave } from './merge.js';
 import { isValidNameParts, nameFromParts } from './names.js';
+import { cleanFeedback, FEEDBACK_GAP_MS } from './feedback.js';
 import { defaultSave } from '../core/save.js';
 
 export const BOARDS = [
@@ -22,6 +23,10 @@ export const BOARDS = [
 
 const PLAYERS = 'players';
 const LEADERBOARD = 'leaderboard';
+const FEEDBACK = 'feedback';
+const FEEDBACK_LIMITS = 'feedbackLimits';
+const FEEDBACK_PAGE = 100; // "Delete my saved data" removes the player's feedback this many at a time
+const FEEDBACK_SLACK_MS = 60000; // device clocks drift; a refusal this close to the 10 minutes is still "too soon"
 const DOC_VERSION = 1; // players/{uid}.v
 const APP_NAME = 'pips-hunt';
 const PUSH_DEBOUNCE_MS = 2000;
@@ -118,6 +123,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
   let owner = null; // { uid, account }: who the local save last synced as
   let freshAfterDelete = null; // the deleted uid this tab has already started fresh for
   let afterDelete = false; // a push is waiting for this tab to see the player after a delete
+  let feedbackSent = null; // { uid, at }: the last feedback this tab sent, to answer "too soon" offline
 
   // ---------------------------------------------------------------- status
 
@@ -710,6 +716,9 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
       // Only as the player who tapped: while the popup was open, another tab
       // may have moved this browser onto the account, whose docs must stay.
       if (uid() === fromUid) {
+        // Its feedback too: this uid is left behind, so "Delete my saved
+        // data" could never reach feedback still filed under it.
+        await deleteFeedback(fromUid);
         await withTimeout(Promise.all([sdk.deleteDoc(playerRef(fromUid)), sdk.deleteDoc(boardRef(fromUid))]));
       }
       await withTimeout(sdk.signInWithCredential(auth, credential));
@@ -835,9 +844,103 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     });
   }
 
-  // "Delete my saved data" (docs/CLOUD.md, Round 2). The board entry and the
-  // cloud save go first, and only once both are gone does this device forget
-  // its progress, so a failure changes nothing and the player can try again.
+  // ---------------------------------------------------------------- feedback
+
+  function limitsRef(id = uid()) {
+    return sdk.doc(db, FEEDBACK_LIMITS, id);
+  }
+
+  // After a refused send: did this player send one in the last 10 minutes
+  // (another tab or device, or before a reload)? Otherwise the refusal is a
+  // setup slip, such as deployed rules that predate feedback.
+  async function sentLately(me) {
+    try {
+      const snap = await withTimeout(sdk.getDoc(limitsRef(me)));
+      if (!snap.exists()) return false;
+      const at = snap.data().lastAt;
+      const ms = at && typeof at.toMillis === 'function' ? at.toMillis() : NaN;
+      // a stamp whose time we can't read is still the likeliest reason
+      return !Number.isFinite(ms) || now() - ms < FEEDBACK_GAP_MS + FEEDBACK_SLACK_MS;
+    } catch {
+      return false;
+    }
+  }
+
+  // Feedback for the game's maker (docs/CLOUD.md, "Feedback"): one doc in
+  // `feedback`, in one batch with the feedbackLimits/{uid} stamp that the
+  // rules rate-limit by. Resolves { ok, error? } and never rejects; error is
+  // 'cloud-off', 'invalid', 'offline', 'too-soon' or a Firebase code.
+  function sendFeedback(payload) {
+    if (!enabled) return Promise.resolve({ ok: false, error: 'cloud-off' });
+    let fields = null;
+    try {
+      fields = cleanFeedback(payload);
+    } catch {
+      fields = null;
+    }
+    if (!fields) return Promise.resolve({ ok: false, error: 'invalid' });
+    // In turn with account changes, so it can't land under a uid that "Delete
+    // my saved data" or a switch to another account is just leaving.
+    return exclusive(async () => {
+      let me = null;
+      try {
+        if (!(await ensureReady())) return { ok: false, error: 'offline' };
+        me = uid();
+        // deleted in another tab: this uid is on its way out (see pushNow)
+        if (!me || me === deletedUid()) return { ok: false, error: 'offline' };
+        if (feedbackSent && feedbackSent.uid === me && now() - feedbackSent.at < FEEDBACK_GAP_MS) {
+          return { ok: false, error: 'too-soon' };
+        }
+        const ref = sdk.doc(sdk.collection(db, FEEDBACK)); // a new random id
+        const batch = sdk.writeBatch(db);
+        batch.set(ref, { uid: me, ...fields, createdAt: sdk.serverTimestamp() });
+        batch.set(limitsRef(me), { lastAt: sdk.serverTimestamp(), lastId: ref.id });
+        await withTimeout(batch.commit());
+        feedbackSent = { uid: me, at: now() };
+        return { ok: true };
+      } catch (err) {
+        if (isOffline(err)) return { ok: false, error: 'offline' };
+        if (me && err && err.code === 'permission-denied' && (await sentLately(me))) return { ok: false, error: 'too-soon' };
+        console.warn('[cloud] feedback failed', errorText(err));
+        return { ok: false, error: errorText(err) };
+      }
+    });
+  }
+
+  // The player's own feedback docs and their rate-limit stamp, for "Delete my
+  // saved data" and for a guest left behind by an account switch. Deployed
+  // rules from before feedback existed refuse the query, and could never have
+  // let a feedback doc be written either, so that refusal means there is
+  // nothing to delete.
+  async function deleteFeedback(me) {
+    try {
+      for (let round = 0; round < 50; round++) {
+        const mine = sdk.query(sdk.collection(db, FEEDBACK), sdk.where('uid', '==', me), sdk.limit(FEEDBACK_PAGE));
+        const snap = await withTimeout(sdk.getDocs(mine));
+        if (!snap.docs.length) break;
+        await withTimeout(Promise.all(snap.docs.map((d) => sdk.deleteDoc(sdk.doc(db, FEEDBACK, d.id)))));
+        if (snap.docs.length < FEEDBACK_PAGE) break;
+      }
+    } catch (err) {
+      if (!err || err.code !== 'permission-denied') throw err;
+      console.warn('[cloud] no feedback to delete (the rules predate it)', errorText(err));
+      return;
+    }
+    // The stamp only now: the rules keep it while the feedback it names is
+    // there. A refusal (a send from another tab landing just now) is too
+    // rare to fail the rest for.
+    try {
+      await withTimeout(sdk.deleteDoc(limitsRef(me)));
+    } catch (err) {
+      if (!err || err.code !== 'permission-denied') throw err;
+      console.warn('[cloud] kept the feedback stamp', errorText(err));
+    }
+  }
+
+  // "Delete my saved data" (docs/CLOUD.md, Round 2). Any feedback, the board
+  // entry and the cloud save go first, and only once all are gone does this
+  // device forget its progress, so a failure changes nothing and the player
+  // can try again.
   // Resolves { ok, accountDeleted?, error? }. accountDeleted is false when
   // Firebase kept the sign-in itself (deleting a Google sign-in needs a fresh
   // one, auth/requires-recent-login), and then we just sign out of it.
@@ -850,6 +953,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
         if (!(await ensureReady())) return { ok: false, error: status.error || 'offline' };
         me = uid();
         setStatus({ state: 'syncing' });
+        await deleteFeedback(me);
         forgetBoard(); // if only one delete lands, the next push posts the entry again
         await withTimeout(Promise.all([sdk.deleteDoc(boardRef(me)), sdk.deleteDoc(playerRef(me))]));
       } catch (err) {
@@ -994,6 +1098,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     signOutToFresh,
     resetEverywhere,
     deleteEverything,
+    sendFeedback,
     getLeaderboard,
     setProfile,
     dispose,

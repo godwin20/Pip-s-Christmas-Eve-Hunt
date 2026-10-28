@@ -20,8 +20,10 @@ code.
 - **That Google account already belongs to another uid** (they signed in on
   another device first; Firebase raises `auth/credential-already-in-use`): we
   merge this device's local progress into that account's save, delete the
-  anonymous uid's `players` and `leaderboard` docs while still signed in as it,
-  then sign in with the Google credential from the error.
+  anonymous uid's `players` and `leaderboard` docs (and any feedback it sent,
+  with its `feedbackLimits` stamp, which "Delete my saved data" could never
+  reach once the uid is left behind) while still signed in as it, then sign in
+  with the Google credential from the error.
 - **Sign out on this device:** sign out, sign in anonymously as a brand-new
   uid, and replace the local save with a fresh one. The progress stays safe in
   the Google account. Keeping the local save would create a second leaderboard
@@ -142,6 +144,9 @@ This is a pure function, and its unit tests live in `test/merge.test.js`.
   - `bestNight` 0..200, `jokesFound` 0..102, `totalPresents` 0..1,000,000 and `nights` 0..100,000;
   - `bestNight <= totalPresents`;
   - `updatedAt == request.time`.
+
+**`feedback/{id}` and `feedbackLimits/{uid}`:** see "Feedback" at the end.
+
 - **Everything else** is denied.
 
 These rules stop obvious tampering only. A determined cheater can still post
@@ -174,6 +179,13 @@ player a random profile at boot.
 (fills in local-only fields), `boardScores(save)` (gives
 `{bestNight, totalPresents, jokesFound, nights}`) and `ensureProfile(save, random?)`.
 
+### src/cloud/feedback.js
+`FEEDBACK_CATEGORIES`, `FEEDBACK_QUICK` (`{ id, icon, label }` lists; the
+rules mirror the ids), `FEEDBACK_QUICK_MAX` (3), `FEEDBACK_COMMENT_MAX` (300),
+`FEEDBACK_GAP_MS` (10 minutes), `APP_VERSION`, `detectDeviceType(win?)`,
+`cleanSeed(v)` and `cleanFeedback(payload)` (the doc's fields without `uid`
+and `createdAt`, or null if it can't be sent). See "Feedback" below.
+
 ### src/cloud/cloud.js: the facade main.js and screens.js use
 `createCloud({ getSave, replaceSave, onStatus })` returns:
 
@@ -190,6 +202,7 @@ player a random profile at boot.
 | `resetEverywhere()` | Promise. Call after a local reset that raised `epoch`. Overwrites the cloud save and deletes, then recreates, the leaderboard entry. |
 | `getLeaderboard(board, { limit = 25 })` | Promise `{ entries: [{ rank, name, score, isMe }], me: { rank, score } \| null, error? }`. Hidden or zero scores aren't listed. |
 | `setProfile(partial)` | Merges into `save.profile`, sets `setAt`, persists locally, then `markDirty({ now: true })`. |
+| `sendFeedback(payload)` | Promise `{ ok, error? }`, never rejects. Writes one `feedback` doc (see "Feedback" below). `error` is `'cloud-off'`, `'invalid'`, `'offline'`, `'too-soon'` or a Firebase code. |
 | `BOARDS` | `[{ id: 'bestNight', label: 'Best Night', icon: '🌙', unit: 'presents' }, { id: 'totalPresents', label: 'All Presents', icon: '🎁', unit: 'presents' }, { id: 'jokesFound', label: 'Jokes Found', icon: '🎉', unit: 'jokes' }]` |
 
 `onStatus(status)` fires on every status change. `replaceSave(next)` is
@@ -313,12 +326,18 @@ unproven (it reportedly worked with the default `*.firebaseapp.com`
 
 ### Delete my data
 The facade gains `deleteEverything()`, which resolves `{ ok, error? }`:
-1. Delete `leaderboard/{uid}` and `players/{uid}`.
-2. Try `deleteUser` on the auth user. If that fails, for example
+1. Delete the player's own `feedback` docs (a `where('uid', '==', uid)`
+   query, 100 at a time) and `feedbackLimits/{uid}` (see "Feedback" below).
+   If the deployed rules predate feedback, the query is refused; then no
+   feedback can exist, so that refusal is not a failure.
+2. Delete `leaderboard/{uid}` and `players/{uid}`.
+3. Try `deleteUser` on the auth user. If that fails, for example
    `auth/requires-recent-login` on a Google user, sign out instead.
-3. Replace the local save with a fresh one, keeping only sound settings and a
+4. Replace the local save with a fresh one, keeping only sound settings and a
    new random name.
-4. Sign in anonymously as a new uid.
+5. Sign in anonymously as a new uid.
+
+A failure in steps 1–2 changes nothing on the device, so the player can try again.
 
 The UI offers "Delete my saved data" with an in-page confirm, on both the
 privacy screen and the account card.
@@ -332,14 +351,18 @@ grown-ups:
 - **Google sign-in:** Google Firebase also keeps the account's email, name and
   photo, so progress can follow you. Only grown-ups should do this.
 - **Leaderboard:** shows only snow names made from our word lists, and scores.
+- **Feedback:** if you send some, we keep the stars, topic, quick notes, any
+  grown-up's note, the map number, device type (touch or keyboard), app
+  version and the player ID, to improve the game. Only the game's maker reads
+  it; other players never see it. (Feedback is one-way, so "no chat" stays true.)
 - **Never:** no ads, no analytics, no tracking, no chat.
 - **Where:** Google Cloud (Firebase).
 - **How long:** until you delete it, or until saves unused for 2 years are
   cleared.
 - **iPhone and iPad:** Safari may clear a guest's progress after about a week
   of not playing; sign in with Google to keep it.
-- **To delete:** the "Delete my saved data" button, or contact
-  `PRIVACY_CONTACT`.
+- **To delete:** the "Delete my saved data" button (it deletes any feedback
+  you sent too), or contact `PRIVACY_CONTACT`.
 
 `PRIVACY_CONTACT` is a constant in `src/cloud/config.js`: an email address
 (shown as a mailto: link) or a web page. It is currently the owner's email,
@@ -348,3 +371,120 @@ which they plan to change later.
 ### Storage
 main.js calls `navigator.storage.persist()` once (best-effort) so browsers are
 less likely to clear the save.
+
+## Feedback
+
+Players can tell the game's maker what they think. It is one-way: nobody else
+ever sees it, so the privacy note's "no chat" stays true. The owner reads it
+in the Firebase console (Firestore > `feedback`).
+
+### Where it is offered
+- **Title:** "⭐ Feedback" on the bottom line next to Reset progress, Privacy
+  and Install (one line, so the title still fits a 700 px tall window).
+- **Results:** a small "⭐ Feedback" link at the end of the page, so the
+  footer keeps its buttons.
+- Never during a night (or its pause menu), and not at all without a cloud
+  (`!cloud.enabled` or no `sendFeedback`).
+- **One per night:** after a send, both links read "Thanks! You can send more
+  after your next night" until a night ends (results, or quit to title). The
+  lock is in memory and in localStorage (`pips-hunt-feedback-sent`, guarded),
+  so a reload keeps it. The rules' 10-minute limit below is the real guard.
+
+### The card (src/ui/screens.js)
+An in-page card over the title or results, in the game's style. The screen
+underneath is `inert`, Tab and Shift+Tab go round the card, and Esc closes
+an open grown-ups question first, then the card. It works with touch and at
+375 px wide (the card scrolls inside its overlay when it is taller than the
+window).
+1. **Stars:** 1–5, a labelled native radio group (arrow keys work), required.
+2. **What is it about?** Exactly one of Bug, Idea, Wardrobe/Cosmetics,
+   Gameplay (`bug`, `idea`, `wardrobe`, `gameplay`), required.
+3. **Quick notes:** up to 3 kid-safe chips, so children never need to type:
+   Loved it!, Too hard, Too easy, Something broke, More clothes please, More
+   jokes please (`loved`, `tooHard`, `tooEasy`, `broke`, `moreClothes`,
+   `moreJokes`). The rest rest while 3 are picked.
+4. **A note, for grown-ups only:** "For grown-ups: add a note" opens the
+   same question as Google sign-in ("For grown-ups: what is A × B?", the
+   shared `gateForm` / `checkGate`), and a right answer holds for the same 10
+   minutes in this tab. Then a field (max 300 characters, live counter) says
+   not to include names, addresses or contact details.
+
+Send checks stars and topic first (a friendly "Please pick…" and focus on the
+group). Success closes the card and shows a toast, "Thank you! Pip's elves are
+reading it 🧝". A failure shows a friendly message in the card and keeps
+everything picked or typed. The lists live in `src/cloud/feedback.js`
+(`FEEDBACK_CATEGORIES`, `FEEDBACK_QUICK`), next to `cleanFeedback()`, which
+the facade runs and the rules mirror.
+
+### Data model
+
+`feedback/{autoId}`: create only. The owner (game maker) reads it in the console.
+
+```
+{ uid: string,              // the signed-in Firebase uid (== request.auth.uid)
+  rating: int 1..5,
+  category: 'bug' | 'idea' | 'wardrobe' | 'gameplay',
+  quick: [id],              // 0..3 of the quick-note ids, no duplicates
+  comment: string,          // 0..300 characters, '' when no grown-up wrote one
+  islandSeed: int | null,   // map number of the last night; null on the title before any
+  deviceType: 'touch' | 'desktop',   // (pointer: coarse), or touch without hover
+  appVersion: string,       // 1..40 chars: package version, plus "+<commit>" on the GitHub Pages build
+  createdAt: <server timestamp> }
+```
+
+`feedbackLimits/{uid}`: `{ lastAt: <server timestamp>, lastId: <feedback doc id> }`.
+
+`sendFeedback()` writes both in one batch. `appVersion` comes from Vite's
+`define` (`__APP_VERSION__` in vite.config.js); main.js passes the map number
+through `deps.getIslandSeed()`.
+
+### Rules (firestore.rules)
+- **Create:** signed in; exactly the keys above; `uid == request.auth.uid`;
+  `rating` an int 1..5; `category` and every `quick` id from literal
+  allow-lists, at most 3 quick ids with no duplicates; `comment` a string of
+  at most 300 characters; `islandSeed` null or an int 0..999,999,999;
+  `deviceType` 'touch' or 'desktop'; `appVersion` a string of 1..40
+  characters; `createdAt == request.time`.
+- **Rate limit:** the same batch must write `feedbackLimits/{uid}` with
+  `lastAt == request.time` and `lastId` naming the feedback doc being created
+  (checked with `existsAfter` / `getAfter`), and the stamp it replaces, if any
+  (`get`), must be at least 10 minutes old. So a uid keeps at most one
+  feedback doc per 10 minutes (sending sooner means deleting the last one
+  and its stamp first; see below).
+- **feedbackLimits/{uid}:** the owner may get it, and delete it only once
+  the feedback doc its `lastId` names is gone (or when there is no stamp).
+  Otherwise a script could delete the stamp and send again at once, as often
+  as it liked; this way every early send costs the one before it, so they
+  can't pile up. "Delete my saved data" deletes the feedback docs first, then
+  the stamp. It can only be created or updated in that batch: exactly
+  `lastAt` and `lastId`, `lastAt == request.time`, and `lastId` must be a
+  feedback doc this batch creates for this uid. Nobody can wind it back by
+  writing it alone.
+- **Reading:** no get, ever. A player may list (a `where('uid', '==', uid)`
+  query) and delete only their own docs, which "Delete my saved data" needs.
+  Nobody else's can be read or listed. No updates.
+
+A new anonymous uid can send again at once, so the limit slows a determined
+spammer down rather than stopping one; only server code (Cloud Functions on
+the paid plan, or App Check) could do more.
+
+### Facade errors
+`sendFeedback()` runs in turn with account changes (so a send can't land
+under a uid "Delete my saved data" is leaving), then:
+- `'invalid'`: `cleanFeedback()` refused the payload; nothing is sent.
+- `'too-soon'`: this tab sent one under this uid less than 10 minutes ago
+  (answered without a write), or the rules refused the batch and
+  `feedbackLimits/{uid}` shows a send in the last 10 minutes (another tab,
+  device or a reload).
+- `'offline'`: Firebase isn't ready or the network failed.
+- Anything else (such as `permission-denied` with no recent stamp: the
+  deployed rules predate feedback) is passed on as its code.
+
+**Deploy order:** deploy firestore.rules before the client that sends
+feedback, or every send is refused.
+
+### Tests
+`test/feedback.test.js` (the pure helpers), `test/cloud.test.js` (the facade
+with a fake SDK: the batch, every error, delete), `test/rules.test.js` (every
+allow and deny case above) and `test/cloud.integration.test.js` (send,
+too-soon, delete and the account switch on the emulators).

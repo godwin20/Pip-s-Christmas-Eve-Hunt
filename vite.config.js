@@ -1,9 +1,19 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// The short build id sent with player feedback (src/cloud/feedback.js): the
+// package version, plus the commit on the GitHub Actions build of the live site.
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const commit = (process.env.GITHUB_SHA || '').slice(0, 7);
+const APP_VERSION = commit ? `${version}+${commit}` : version;
 
 export default defineConfig({
   // relative asset paths, so dist/ works from any folder or host (itch.io, GitHub Pages, a zip)
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   build: {
     // three.js alone is ~700 kB, so the default 500 kB warning always fires
     chunkSizeWarningLimit: 1200,

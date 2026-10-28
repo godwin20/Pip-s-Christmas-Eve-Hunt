@@ -6,6 +6,7 @@ import { createCloud, BOARDS } from '../src/cloud/cloud.js';
 import { toCloudSave, ensureProfile } from '../src/cloud/merge.js';
 import { defaultSave, syncCoinLedger } from '../src/core/save.js';
 import { spentOnUpgrades, buyUpgrade } from '../src/game/upgrades.js';
+import { APP_VERSION } from '../src/cloud/feedback.js';
 
 const CONFIG = { apiKey: 'k', projectId: 'demo-pips-hunt', appId: 'a' };
 const RANKED = ['bestNight', 'totalPresents', 'jokesFound'];
@@ -55,11 +56,14 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
     auth.currentUser = user;
     for (const fn of [...listeners]) queueMicrotask(() => fn(user));
   };
-  const own = (ref) => {
-    if (!auth.currentUser || ref.split('/')[1] !== auth.currentUser.uid) throw denied(`not the owner of ${ref}`);
+  // A feedback doc belongs to the uid it holds; every other doc to its id.
+  const own = (ref, data) => {
+    const [col, id] = String(ref).split('/');
+    const owner = col === 'feedback' ? (data || store[ref] || {}).uid : id;
+    if (!auth.currentUser || owner !== auth.currentUser.uid) throw denied(`not the owner of ${ref}`);
   };
   const put = (ref, data) => {
-    own(ref);
+    own(ref, data);
     if (JSON.stringify(data) !== JSON.stringify(data, (k, v) => (v === undefined ? null : v))) {
       throw new Error(`undefined written to ${ref}`);
     }
@@ -76,11 +80,15 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
     store[ref] = structuredClone(data);
   };
   let anonCount = 0;
+  let autoIds = 0;
   const sdk = {
     backend,
     store,
     writes,
     auth,
+    batchError: null, // error the next batch commit throws
+    listError: null, // error the next feedback query throws
+    batches: 0,
     linkResult: null, // error the next linkWithPopup throws
     linkCalls: 0,
     failDelete: null, // ref whose next delete fails
@@ -121,8 +129,40 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
         return (err && err.credential) || null;
       }
     },
-    doc: (db, col, id) => `${col}/${id}`,
+    // doc(collection) is a new doc with a random id, which the facade reads as ref.id
+    doc: (db, col, id) => {
+      if (col !== undefined) return `${col}/${id}`;
+      const newId = `fb${++autoIds}`;
+      return { id: newId, toString: () => `${db}/${newId}` };
+    },
     serverTimestamp: () => 'SERVER_TIME',
+    // firestore.rules for feedback: the owner's uid, stamped in the same batch
+    // in feedbackLimits/{uid}, and at most one every 10 minutes
+    writeBatch: () => {
+      const staged = [];
+      return {
+        set: (ref, data) => staged.push([String(ref), structuredClone(data)]),
+        commit: async () => {
+          sdk.batches++;
+          if (sdk.batchError) {
+            const err = sdk.batchError;
+            sdk.batchError = null;
+            throw err;
+          }
+          for (const [ref, data] of staged) {
+            if (!ref.startsWith('feedback/')) continue;
+            own(ref, data);
+            const limits = `feedbackLimits/${data.uid}`;
+            if (!staged.some(([r, d]) => r === limits && d.lastId === ref.split('/')[1])) throw denied('feedback without its stamp');
+            if (store[limits] && now() - writtenAt[limits] < 10 * 60 * 1000) {
+              refused.push(ref);
+              throw denied('feedback within 10 minutes');
+            }
+          }
+          for (const [ref, data] of staged) put(ref, data);
+        },
+      };
+    },
     runTransaction: async (db, fn) => {
       const staged = [];
       await fn({
@@ -138,6 +178,8 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
     setDoc: async (ref, data) => put(ref, data),
     deleteDoc: async (ref) => {
       own(ref);
+      // firestore.rules: a stamp goes only once the feedback it names is gone
+      if (ref.startsWith('feedbackLimits/') && store[ref] && store[`feedback/${store[ref].lastId}`]) throw denied('stamp of live feedback');
       if (sdk.failDelete === ref) {
         sdk.failDelete = null;
         throw Object.assign(new Error('delete failed'), { code: 'unavailable' });
@@ -155,10 +197,21 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
     lastQuery: null,
     getDocs: async (q) => {
       sdk.lastQuery = q;
+      const [field, op, value] = q.where;
+      if (q.col === 'feedback') {
+        if (sdk.listError) {
+          const err = sdk.listError;
+          sdk.listError = null;
+          throw err;
+        }
+        // only a query for the player's own
+        if (field !== 'uid' || op !== '==' || !auth.currentUser || value !== auth.currentUser.uid) throw denied('feedback list');
+      }
+      const match = (d) => (op === '==' ? d[field] === value : d[field] > value);
       const docs = Object.keys(store)
-        .filter((ref) => ref.startsWith(`${q.col}/`) && store[ref][q.where[0]] > q.where[2])
+        .filter((ref) => ref.startsWith(`${q.col}/`) && match(store[ref]))
         .map((ref) => ({ id: ref.split('/')[1], data: () => structuredClone(store[ref]) }))
-        .sort((a, b) => b.data()[q.orderBy] - a.data()[q.orderBy])
+        .sort((a, b) => (q.orderBy ? b.data()[q.orderBy] - a.data()[q.orderBy] : 0))
         .slice(0, q.limit);
       return { docs };
     },
@@ -244,6 +297,7 @@ describe('createCloud without a Firebase project', () => {
     expect((await cloud.signOutToFresh()).ok).toBe(false);
     expect((await cloud.resetEverywhere()).ok).toBe(false);
     expect(await cloud.deleteEverything()).toEqual({ ok: false, error: 'cloud-off' });
+    expect(await cloud.sendFeedback({ rating: 5, category: 'idea' })).toEqual({ ok: false, error: 'cloud-off' });
     expect(await cloud.getLeaderboard('bestNight')).toMatchObject({ entries: [], me: null, error: 'cloud-off' });
     expect(cloud.ready).toBe(false);
     expect(loads).toBe(0);
@@ -1055,5 +1109,201 @@ describe('createCloud deleteEverything', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
     expect(t.save).toEqual(before);
+  });
+});
+
+describe('createCloud sendFeedback', () => {
+  const FEEDBACK = { rating: 4, category: 'idea', quick: ['loved', 'moreJokes'], comment: '', islandSeed: 123456 };
+  const feedbackDocs = (sdk) => Object.keys(sdk.store).filter((ref) => ref.startsWith('feedback/'));
+
+  it('writes one feedback doc and its rate-limit stamp in one batch', async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    expect(t.sdk.batches).toBe(1);
+    const refs = feedbackDocs(t.sdk);
+    expect(refs).toHaveLength(1);
+    expect(t.sdk.store[refs[0]]).toEqual({
+      uid: 'anon1',
+      rating: 4,
+      category: 'idea',
+      quick: ['loved', 'moreJokes'],
+      comment: '',
+      islandSeed: 123456,
+      deviceType: 'desktop', // no touch screen under Node
+      appVersion: APP_VERSION,
+      createdAt: 'SERVER_TIME',
+    });
+    expect(t.sdk.store['feedbackLimits/anon1']).toEqual({ lastAt: 'SERVER_TIME', lastId: refs[0].split('/')[1] });
+  });
+
+  it('tidies what the game filled in, and keeps a grown-up\'s note', async () => {
+    const t = setup();
+    await t.cloud.start();
+    const res = await t.cloud.sendFeedback({
+      rating: 1,
+      category: 'bug',
+      quick: ['broke', 'loved', 'broke'], // a double tap
+      comment: '  The sleigh got stuck by the pond.\r\n',
+      islandSeed: '?', // the results' stand-in for a missing map number
+      deviceType: 'touch',
+      appVersion: '2.0.0+abc1234',
+    });
+    expect(res).toEqual({ ok: true });
+    const doc = t.sdk.store[feedbackDocs(t.sdk)[0]];
+    expect(doc).toMatchObject({
+      quick: ['loved', 'broke'],
+      comment: 'The sleigh got stuck by the pond.',
+      islandSeed: null,
+      deviceType: 'touch',
+      appVersion: '2.0.0+abc1234',
+    });
+  });
+
+  it('answers invalid for anything the rules would refuse, without a write', async () => {
+    const t = setup();
+    await t.cloud.start();
+    const before = t.sdk.batches;
+    const bad = [
+      undefined,
+      null,
+      'five stars',
+      { ...FEEDBACK, rating: 0 },
+      { ...FEEDBACK, rating: 6 },
+      { ...FEEDBACK, rating: 4.5 },
+      { ...FEEDBACK, rating: '4' },
+      { ...FEEDBACK, category: undefined },
+      { ...FEEDBACK, category: 'hack' },
+      { ...FEEDBACK, quick: ['loved', 'pizza'] },
+      { ...FEEDBACK, quick: 'loved' },
+      { ...FEEDBACK, quick: ['loved', 'tooHard', 'broke', 'moreJokes'] },
+      { ...FEEDBACK, comment: 'x'.repeat(301) },
+      { ...FEEDBACK, comment: 42 },
+    ];
+    for (const payload of bad) expect(await t.cloud.sendFeedback(payload), JSON.stringify(payload)).toEqual({ ok: false, error: 'invalid' });
+    expect(t.sdk.batches).toBe(before);
+    expect(feedbackDocs(t.sdk)).toEqual([]);
+    // exactly 300 is fine
+    expect(await t.cloud.sendFeedback({ ...FEEDBACK, comment: 'x'.repeat(300) })).toEqual({ ok: true });
+  });
+
+  it('answers too-soon within 10 minutes of the last one, then sends again', async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    const batches = t.sdk.batches;
+    t.clock.advance(9 * 60 * 1000);
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'too-soon' });
+    expect(t.sdk.batches).toBe(batches); // known here, so no write was tried
+    t.clock.advance(60 * 1000);
+    expect(await t.cloud.sendFeedback({ ...FEEDBACK, rating: 5 })).toEqual({ ok: true });
+    expect(feedbackDocs(t.sdk)).toHaveLength(2);
+  });
+
+  it('reads the stamp to tell a refused send "too soon" when another tab sent the last one', async () => {
+    const sdk = fakeSdk();
+    const clock = fakeClock();
+    const tabA = setup({ sdk, clock });
+    const tabB = setup({ sdk, clock });
+    await tabA.cloud.start();
+    clock.advance(7000);
+    await tabB.cloud.start();
+    expect(await tabA.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    expect(await tabB.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'too-soon' });
+    expect(sdk.backend.refused.filter((ref) => ref.startsWith('feedback/'))).toHaveLength(1);
+    expect(feedbackDocs(sdk)).toHaveLength(1);
+  });
+
+  it('passes on a refusal that is not the rate limit (rules not deployed yet)', async () => {
+    const t = setup();
+    await t.cloud.start();
+    t.sdk.batchError = Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'permission-denied' });
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true }); // and can try again
+  });
+
+  it('answers offline when the network or Firebase is away, and never rejects', async () => {
+    const t = setup();
+    await t.cloud.start();
+    t.sdk.batchError = Object.assign(new Error('offline'), { code: 'unavailable' });
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'offline' });
+    expect(feedbackDocs(t.sdk)).toEqual([]);
+
+    const away = setup({ loadFirebase: () => Promise.reject(new TypeError('Failed to fetch dynamically imported module')) });
+    await away.cloud.start();
+    expect(await away.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'offline' });
+  });
+
+  it('takes its turn after a sync, and sends as the player signed in then', async () => {
+    const t = setup();
+    const started = t.cloud.start();
+    const sent = t.cloud.sendFeedback(FEEDBACK);
+    await started;
+    expect(await sent).toEqual({ ok: true });
+    expect(t.sdk.store[feedbackDocs(t.sdk)[0]].uid).toBe('anon1');
+  });
+});
+
+describe('createCloud deleteEverything and feedback', () => {
+  const FEEDBACK = { rating: 5, category: 'gameplay', quick: ['loved'], comment: '', islandSeed: 42 };
+  const OTHERS = { uid: 'someoneElse', rating: 2, category: 'bug', quick: [], comment: '', islandSeed: null, deviceType: 'touch', appVersion: '1.0.0', createdAt: 'SERVER_TIME' };
+
+  it("deletes the player's own feedback and stamp, and nobody else's", async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    t.clock.advance(11 * 60 * 1000);
+    expect(await t.cloud.sendFeedback({ ...FEEDBACK, rating: 3 })).toEqual({ ok: true });
+    t.sdk.store['feedback/theirs'] = structuredClone(OTHERS);
+    const mine = Object.keys(t.sdk.store).filter((ref) => ref.startsWith('feedback/fb'));
+    expect(mine).toHaveLength(2);
+
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: true });
+    for (const ref of mine) expect(t.sdk.store[ref]).toBeUndefined();
+    expect(t.sdk.store['feedbackLimits/anon1']).toBeUndefined();
+    expect(t.sdk.store['feedback/theirs']).toEqual(OTHERS);
+    expect(t.sdk.writes).toEqual(expect.arrayContaining([...mine.map((ref) => `delete ${ref}`), 'delete feedbackLimits/anon1']));
+    // the new guest may send its own straight away
+    expect(t.cloud.uid).toBe('anon2');
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+  });
+
+  // The guest's docs are dropped on a switch, and its uid is left behind, so
+  // "Delete my saved data" could never reach feedback still filed under it.
+  it("drops the guest's feedback too when switching into an existing Google account", async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    t.sdk.store['feedback/theirs'] = structuredClone(OTHERS);
+    const mine = Object.keys(t.sdk.store).filter((ref) => ref.startsWith('feedback/fb'));
+    expect(mine).toHaveLength(1);
+    t.sdk.linkResult = Object.assign(new Error('in use'), { code: 'auth/credential-already-in-use', credential: { uid: 'google1' } });
+    expect(await t.cloud.linkGoogle()).toEqual({ ok: true, switched: true });
+    expect(t.cloud.uid).toBe('google1');
+    expect(t.sdk.store[mine[0]]).toBeUndefined();
+    expect(t.sdk.store['feedbackLimits/anon1']).toBeUndefined();
+    expect(t.sdk.store['feedback/theirs']).toEqual(OTHERS);
+  });
+
+  it('goes on when the deployed rules predate feedback (none can exist then)', async () => {
+    const t = setup();
+    await t.cloud.start();
+    t.sdk.listError = Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' });
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: true });
+    expect(t.sdk.store['players/anon1']).toBeUndefined();
+  });
+
+  it('changes nothing when the feedback cannot be deleted, and can try again', async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    const before = structuredClone(t.save);
+    t.sdk.listError = Object.assign(new Error('offline'), { code: 'unavailable' });
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: false, error: 'unavailable' });
+    expect(t.save).toEqual(before);
+    expect(t.sdk.store['players/anon1']).toBeDefined();
+    expect(t.cloud.uid).toBe('anon1');
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: true });
+    expect(Object.keys(t.sdk.store).filter((ref) => ref.startsWith('feedback'))).toEqual([]);
   });
 });

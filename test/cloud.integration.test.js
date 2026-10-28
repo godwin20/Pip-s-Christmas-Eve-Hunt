@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { linkWithCredential } from 'firebase/auth';
 import { createCloud } from '../src/cloud/cloud.js';
 import * as firebaseSdk from '../src/cloud/firebase-sdk.js';
@@ -360,7 +360,7 @@ describe('leaderboard on the emulators', () => {
 
 describe('Firestore Lite, unchanged pushes and deleting data on the emulators', () => {
   it('the game\'s SDK slice is Firestore Lite, with no cache or listeners', () => {
-    for (const name of ['getDoc', 'getDocs', 'getCount', 'setDoc', 'deleteDoc', 'runTransaction', 'deleteUser', 'linkWithPopup']) {
+    for (const name of ['getDoc', 'getDocs', 'getCount', 'setDoc', 'deleteDoc', 'runTransaction', 'writeBatch', 'deleteUser', 'linkWithPopup']) {
       expect(firebaseSdk[name], name).toBeTypeOf('function');
     }
     for (const name of ['getDocFromServer', 'getDocsFromServer', 'getCountFromServer', 'onSnapshot']) {
@@ -429,5 +429,90 @@ describe('Firestore Lite, unchanged pushes and deleting data on the emulators', 
     expect(d.cloud.uid).not.toBe(googleUid);
     expect(d.cloud.status).toMatchObject({ isAnonymous: true, accountName: null, ready: true });
     expect(d.save.totalPresents).toBe(0);
+  });
+});
+
+describe('feedback on the emulators', () => {
+  const FEEDBACK = { rating: 5, category: 'wardrobe', quick: ['loved', 'moreClothes'], comment: 'More hats please!', islandSeed: 424242 };
+
+  // Every feedback doc a uid has sent, read past the rules like the owner's console.
+  async function feedbackOf(uid) {
+    let docs = [];
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDocs(query(collection(ctx.firestore(), 'feedback'), where('uid', '==', uid)));
+      docs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    });
+    return docs;
+  }
+
+  it('sends one doc the rules accept, with its stamp, and answers too-soon after', async () => {
+    const d = device('feedbacker', makeSave({ totalPresents: 4, bestPresentsInNight: 4 }));
+    expect(await d.cloud.start()).toBe(true);
+    const uid = d.cloud.uid;
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    const sent = await feedbackOf(uid);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ uid, ...FEEDBACK, deviceType: 'desktop' });
+    expect(typeof sent[0].appVersion).toBe('string');
+    expect(sent[0].createdAt).toBeInstanceOf(Timestamp);
+    const stamp = await readDoc(`feedbackLimits/${uid}`);
+    expect(stamp.lastId).toBe(sent[0].id);
+    expect(stamp.lastAt.toMillis()).toBe(sent[0].createdAt.toMillis());
+
+    expect(await d.cloud.sendFeedback({ ...FEEDBACK, rating: 4 })).toEqual({ ok: false, error: 'too-soon' });
+    expect(await feedbackOf(uid)).toHaveLength(1);
+  });
+
+  it('a refused send reads as too-soon when the stamp is recent, and goes through once it is 10 minutes old', async () => {
+    const d = device('feedbackerTwo', makeSave());
+    expect(await d.cloud.start()).toBe(true);
+    const uid = d.cloud.uid;
+    // sent from another device a minute ago: the rules refuse, the stamp explains
+    await writeDoc(`feedbackLimits/${uid}`, { lastAt: Timestamp.fromMillis(Date.now() - 60 * 1000), lastId: 'elsewhere' });
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: false, error: 'too-soon' });
+    expect(await feedbackOf(uid)).toEqual([]);
+    await writeDoc(`feedbackLimits/${uid}`, { lastAt: Timestamp.fromMillis(Date.now() - 11 * 60 * 1000), lastId: 'elsewhere' });
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    expect(await feedbackOf(uid)).toHaveLength(1);
+  });
+
+  it("deleteEverything removes the player's feedback and stamp, and nobody else's", async () => {
+    const other = device('feedbackOther', makeSave());
+    expect(await other.cloud.start()).toBe(true);
+    expect(await other.cloud.sendFeedback({ ...FEEDBACK, comment: '' })).toEqual({ ok: true });
+
+    const d = device('feedbackDeleter', makeSave({ totalPresents: 9, bestPresentsInNight: 9 }));
+    expect(await d.cloud.start()).toBe(true);
+    const uid = d.cloud.uid;
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    expect(await feedbackOf(uid)).toHaveLength(1);
+
+    expect(await d.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: true });
+    expect(await feedbackOf(uid)).toEqual([]);
+    expect(await readDoc(`feedbackLimits/${uid}`)).toBeNull();
+    expect(await readDoc(`players/${uid}`)).toBeNull();
+    expect(await feedbackOf(other.cloud.uid)).toHaveLength(1);
+    expect(await readDoc(`feedbackLimits/${other.cloud.uid}`)).not.toBeNull();
+    // the new guest is a new player, free to send straight away
+    expect(d.cloud.uid).not.toBe(uid);
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+  });
+
+  it("switching into an existing Google account drops the guest's feedback with its other docs", async () => {
+    const first = device('feedbackGoogleFirst', makeSave(), 'fb-google', 'Holly Elf');
+    expect(await first.cloud.start()).toBe(true);
+    expect(await first.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
+
+    const d = device('feedbackGuestThenGoogle', makeSave(), 'fb-google', 'Holly Elf');
+    expect(await d.cloud.start()).toBe(true);
+    const guest = d.cloud.uid;
+    expect(await d.cloud.sendFeedback(FEEDBACK)).toEqual({ ok: true });
+    expect(await feedbackOf(guest)).toHaveLength(1);
+
+    expect(await d.cloud.linkGoogle()).toEqual({ ok: true, switched: true });
+    expect(d.cloud.uid).toBe(first.cloud.uid);
+    expect(await feedbackOf(guest)).toEqual([]);
+    expect(await readDoc(`feedbackLimits/${guest}`)).toBeNull();
+    expect(await readDoc(`players/${guest}`)).toBeNull();
   });
 });

@@ -153,6 +153,7 @@ let respawnTimer = 0;
 let lastTickSecond = -1;
 let orbitAngle = 0;
 let homeArmedAt = -1; // ctx.time of the last E press at the sleigh, -1 = not armed
+let lastNightSeed = null; // map number of the last night played (feedback says which island)
 
 // Cloud saves + leaderboard (docs/CLOUD.md). Everything still works without it.
 const cloud = createCloud({
@@ -175,6 +176,8 @@ const screens = createScreens(document.getElementById('screens'), {
   cloud,
   pwa,
   onStartNight: () => startNight(),
+  // the title backdrop's island is no night, so null until one is played
+  getIslandSeed: () => lastNightSeed,
   onResume: () => resume(),
   onGoHome: () => endNight(true),
   onQuitToTitle: () => quitToTitle(),
@@ -289,6 +292,7 @@ function startNight() {
   popups.closeAll(); // at once: an animated close would freeze the new night's first frames
   busy = false;
   buildWorld(randomSeed(), { populate: true });
+  lastNightSeed = ctx.seed;
   ctx.time = 0;
   ctx.run = {
     timeLeft: ctx.stats.nightSeconds,

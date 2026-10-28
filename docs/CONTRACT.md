@@ -295,14 +295,15 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
 
 ### `src/ui/screens.js` (+ `src/ui/screens.css`, imported by screens.js)
 `export function createScreens(root, deps)` with
-`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged() }` →
+`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), getIslandSeed() /* map number of the last night, or null */, onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged() }` →
 ```
 { showTitle(), showResults(summary), showShop(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */,
   refresh(), cloudChanged() /* docs/CLOUD.md */, pwaChanged() /* src/core/pwa.js */ }
 ```
 `summary = { seed, crackers, presents, coinsEarned, newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
-- **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step.
-- **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title.
+- **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step, and (with a cloud) "⭐ Feedback" on the same bottom line.
+- **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
+- **Feedback card** (docs/CLOUD.md, "Feedback"): an in-page card over the title or results, never during a night: 1–5 stars, one topic, up to 3 quick-note chips, and a note only behind the grown-ups question. It calls `cloud.sendFeedback(payload)` with `{ rating, category, quick, comment, islandSeed }`; a success shows a thank-you toast, and the Feedback links say "Thanks! You can send more after your next night" until a night ends. The lists are `FEEDBACK_CATEGORIES` and `FEEDBACK_QUICK` in `src/cloud/feedback.js`.
 - **Shop (Santa's Workshop)**: tabs **Upgrades**, **Rewards**, **Wardrobe**. Coins shown. Upgrade cards: icon, name, blurb, level pips (●●○), next level text, Buy button with cost (disabled if poor/maxed; `buyUpgrade` from upgrades.js, then `persist()`, `sfx.play('buy')` or `'error'`). Rewards tab: present milestone track — progress bar of `save.totalPresents` with milestone stops (icon, count, name, locked/unlocked). Wardrobe: toggles for unlocked cosmetic milestones (`save.wardrobe[id]`). Buttons: Start Night, Gallery, Title.
 - **Gallery**: scrapbook page; filter chips All / Jokes / Quotes / Secrets(Legendary); counter "42 / 102 found"; grid of cards — found cards show the `q` and flip on click to show `a` (with 🔊 read aloud); unfound show "???" silhouette with a cracker outline and rarity tint. Back button.
 - **Pause**: Resume, Gallery, Sound toggles, Go home (end night early), Quit to title.

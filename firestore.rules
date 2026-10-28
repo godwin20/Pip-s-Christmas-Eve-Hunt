@@ -1,8 +1,9 @@
 rules_version = '2';
 
-// Cloud saves and the leaderboard (docs/CLOUD.md). Anything not allowed below
-// is denied. The caps mirror CLOUD_LIMITS and BOARD_LIMITS in src/cloud/merge.js,
-// and the name ranges mirror the word lists in src/cloud/names.js.
+// Cloud saves, the leaderboard and player feedback (docs/CLOUD.md). Anything
+// not allowed below is denied. The caps mirror CLOUD_LIMITS and BOARD_LIMITS in
+// src/cloud/merge.js, the name ranges mirror the word lists in
+// src/cloud/names.js, and the feedback lists mirror src/cloud/feedback.js.
 //
 // These rules stop obvious tampering only: a determined cheater can still post
 // plausible scores, which only server code could check.
@@ -144,6 +145,80 @@ service cloud.firestore {
       allow create: if isOwner(uid) && entryOk();
       allow update: if isOwner(uid) && entryOk() && noScoreDrops() && restedSinceLastWrite();
       allow delete: if isOwner(uid);
+    }
+
+    // ------------------------------------------------------------ feedback/{id}
+    // One-way notes to the game's maker, who reads them in the Firebase
+    // console. Players never see anyone else's. The ids mirror
+    // FEEDBACK_CATEGORIES and FEEDBACK_QUICK in src/cloud/feedback.js.
+
+    function limitsPath(uid) {
+      return /databases/$(database)/documents/feedbackLimits/$(uid);
+    }
+
+    function feedbackPath(id) {
+      return /databases/$(database)/documents/feedback/$(id);
+    }
+
+    function quickOk(l) {
+      return l is list && l.size() <= 3 &&
+        l.toSet().size() == l.size() &&
+        l.hasOnly(['loved', 'tooHard', 'tooEasy', 'broke', 'moreClothes', 'moreJokes']);
+    }
+
+    function feedbackOk() {
+      let d = request.resource.data;
+      return hasExactly(d, ['uid', 'rating', 'category', 'quick', 'comment', 'islandSeed', 'deviceType', 'appVersion', 'createdAt']) &&
+        d.uid == request.auth.uid &&
+        intIn(d.rating, 1, 5) &&
+        d.category in ['bug', 'idea', 'wardrobe', 'gameplay'] &&
+        quickOk(d.quick) &&
+        d.comment is string && d.comment.size() <= 300 &&
+        (d.islandSeed == null || intIn(d.islandSeed, 0, 999999999)) &&
+        d.deviceType in ['touch', 'desktop'] &&
+        d.appVersion is string && d.appVersion.size() >= 1 && d.appVersion.size() <= 40 &&
+        d.createdAt == request.time;
+    }
+
+    // At most one per player every 10 minutes: the same batch must stamp
+    // feedbackLimits/{uid} with this doc's id and the server time, and the
+    // stamp it replaces (if any) must be 10 minutes old.
+    function feedbackRested(id) {
+      let path = limitsPath(request.auth.uid);
+      return existsAfter(path) &&
+        getAfter(path).data.lastAt == request.time &&
+        getAfter(path).data.lastId == id &&
+        (!exists(path) || request.time >= get(path).data.lastAt + duration.value(10, 'm'));
+    }
+
+    match /feedback/{id} {
+      allow create: if signedIn() && feedbackOk() && feedbackRested(id);
+      // Only a query for the player's own (where uid == their uid), and only
+      // to delete them ("Delete my saved data"). No get, no update.
+      allow list, delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // feedbackLimits/{uid}: when the player last sent feedback. Written only
+    // in the batch that creates that feedback doc; the owner may read it
+    // (to tell "too soon" from other refusals) and delete it once the doc it
+    // names is gone ("Delete my saved data" deletes the feedback first).
+    // Otherwise deleting it would let a script send again at once, as often
+    // as it liked; this way each early send costs the one before it.
+    function limitOk(uid) {
+      let d = request.resource.data;
+      return hasExactly(d, ['lastAt', 'lastId']) &&
+        d.lastAt == request.time &&
+        d.lastId is string && d.lastId.matches('[A-Za-z0-9]{1,40}') &&
+        !exists(feedbackPath(d.lastId)) &&
+        existsAfter(feedbackPath(d.lastId)) &&
+        getAfter(feedbackPath(d.lastId)).data.uid == uid;
+    }
+
+    match /feedbackLimits/{uid} {
+      allow get: if isOwner(uid);
+      allow delete: if isOwner(uid) &&
+        (resource == null || !existsAfter(feedbackPath(resource.data.lastId)));
+      allow create, update: if isOwner(uid) && limitOk(uid);
     }
   }
 }

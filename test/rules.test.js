@@ -2,7 +2,7 @@
 // Every rule in docs/CLOUD.md gets an allow case and a deny case.
 
 import { readFileSync } from 'node:fs';
-import { describe, it, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
 import {
   doc,
@@ -19,6 +19,7 @@ import {
   getCountFromServer,
   serverTimestamp,
   runTransaction,
+  writeBatch,
   Timestamp,
 } from 'firebase/firestore';
 import { initializeApp, deleteApp } from 'firebase/app';
@@ -28,6 +29,7 @@ import { defaultSave, syncCoinLedger } from '../src/core/save.js';
 import { JOKES } from '../src/data/jokes.js';
 import { MILESTONES } from '../src/game/milestones.js';
 import { UPGRADES } from '../src/game/upgrades.js';
+import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, cleanFeedback } from '../src/cloud/feedback.js';
 
 // Each case is a round trip to the emulator; seeding the board takes a moment.
 vi.setConfig({ testTimeout: 20000, hookTimeout: 30000 });
@@ -545,5 +547,196 @@ describe('everything else', () => {
     await assertFails(setDoc(doc(as(ALICE), 'secrets', 'x'), { a: 1 }));
     await assertFails(getDoc(doc(as(ALICE), 'secrets', 'x')));
     await assertFails(setDoc(doc(as(ALICE), 'players', ALICE, 'extra', 'x'), { a: 1 }));
+  });
+});
+
+// ---------------------------------------------------------------- feedback
+
+// A doc as cloud.sendFeedback() writes it: the client's own cleanFeedback,
+// so the client and the rules can't drift apart unnoticed.
+function feedbackDoc(uid, over = {}) {
+  const fields = cleanFeedback({ rating: 4, category: 'idea', quick: ['loved', 'moreJokes'], comment: '', islandSeed: 123456, deviceType: 'touch', appVersion: '1.0.0+abc1234' });
+  return { uid, ...fields, createdAt: serverTimestamp(), ...over };
+}
+
+// The batch cloud.js sends: the feedback doc and its feedbackLimits stamp.
+// `stamp: false` leaves the stamp out; `extra` adds more writes.
+function sendFeedback(uid, { data, stamp, limitsOwner = uid, id, extra } = {}) {
+  const db = as(uid);
+  const ref = id ? doc(db, 'feedback', id) : doc(collection(db, 'feedback'));
+  const batch = writeBatch(db);
+  batch.set(ref, data || feedbackDoc(uid));
+  if (stamp !== false) batch.set(doc(db, 'feedbackLimits', limitsOwner), stamp || { lastAt: serverTimestamp(), lastId: ref.id });
+  if (extra) extra(batch, db, ref);
+  return batch.commit();
+}
+
+const MINUTE = 60 * 1000;
+
+describe('feedback/{id}: sending', () => {
+  it('lets a signed-in player send one with its stamp', async () => {
+    await assertSucceeds(sendFeedback(ALICE));
+  });
+
+  it('accepts every topic, every quick note, both device types and the edges of each range', async () => {
+    const cases = [
+      ...FEEDBACK_CATEGORIES.map((c) => ({ category: c.id })),
+      { quick: FEEDBACK_QUICK.slice(0, 3).map((q) => q.id) },
+      { quick: FEEDBACK_QUICK.slice(3).map((q) => q.id) },
+      { quick: [] },
+      { rating: 1 },
+      { rating: 5 },
+      { comment: 'x'.repeat(300) },
+      { comment: '🎄'.repeat(150) },
+      { islandSeed: null },
+      { islandSeed: 0 },
+      { islandSeed: 999999999 },
+      { deviceType: 'desktop' },
+      { appVersion: 'v'.repeat(40) },
+    ];
+    // a new player each time: one per player every 10 minutes
+    for (const [i, over] of cases.entries()) {
+      await assertSucceeds(sendFeedback(`kid${i}`, { data: feedbackDoc(`kid${i}`, over) }));
+    }
+  });
+
+  it('refuses signed-out visitors and sending as someone else', async () => {
+    await assertFails(sendFeedback(null, { data: feedbackDoc('anonymous'), limitsOwner: 'anonymous' }));
+    await assertFails(sendFeedback(ALICE, { data: feedbackDoc(BOB) }));
+    await assertFails(sendFeedback(ALICE, { data: feedbackDoc('anonymous') }));
+    await assertFails(sendFeedback(ALICE, { data: feedbackDoc(BOB), limitsOwner: BOB }));
+  });
+
+  it('needs exactly the feedback keys', async () => {
+    await assertFails(sendFeedback(ALICE, { data: feedbackDoc(ALICE, { email: 'kid@example.com' }) }));
+    for (const key of ['uid', 'rating', 'category', 'quick', 'comment', 'islandSeed', 'deviceType', 'appVersion', 'createdAt']) {
+      await assertFails(sendFeedback(ALICE, { data: without(feedbackDoc(ALICE), key) }), key);
+    }
+  });
+
+  it('checks every field', async () => {
+    const bad = [
+      { rating: 0 },
+      { rating: 6 },
+      { rating: 3.5 },
+      { rating: '4' },
+      { category: 'hack' },
+      { category: 'Bug' },
+      { category: ['bug'] },
+      { quick: ['loved', 'pizza'] },
+      { quick: ['loved', 'loved'] },
+      { quick: ['loved', 'tooHard', 'tooEasy', 'broke'] },
+      { quick: 'loved' },
+      { quick: [1] },
+      { comment: 'x'.repeat(301) },
+      { comment: 42 },
+      { comment: null },
+      { islandSeed: -1 },
+      { islandSeed: 1000000000 },
+      { islandSeed: 1.5 },
+      { islandSeed: '123456' },
+      { deviceType: 'phone' },
+      { deviceType: null },
+      { appVersion: '' },
+      { appVersion: 'v'.repeat(41) },
+      { appVersion: 100 },
+      { createdAt: Timestamp.fromMillis(Date.now()) },
+    ];
+    for (const over of bad) await assertFails(sendFeedback(ALICE, { data: feedbackDoc(ALICE, over) }), JSON.stringify(over));
+  });
+});
+
+describe('feedback/{id}: the 10-minute limit', () => {
+  it('refuses a send without its stamp, or with a wrong one', async () => {
+    await assertFails(sendFeedback(ALICE, { stamp: false }));
+    await assertFails(sendFeedback(ALICE, { stamp: { lastAt: serverTimestamp(), lastId: 'someOtherDoc' } }));
+    await assertFails(sendFeedback(ALICE, { stamp: { lastAt: agoMs(20 * MINUTE), lastId: 'x' } }));
+    await assertFails(sendFeedback(ALICE, { id: 'fixedId1', stamp: { lastAt: agoMs(1), lastId: 'fixedId1' } }));
+    await assertFails(sendFeedback(ALICE, { id: 'fixedId2', stamp: { lastAt: serverTimestamp(), lastId: 'fixedId2', extra: 1 } }));
+  });
+
+  it('refuses a second send within 10 minutes, and allows one after', async () => {
+    await assertSucceeds(sendFeedback(ALICE));
+    await assertFails(sendFeedback(ALICE));
+    await seed('feedbackLimits/alice', { lastAt: agoMs(9 * MINUTE), lastId: 'earlier' });
+    await assertFails(sendFeedback(ALICE));
+    await seed('feedbackLimits/alice', { lastAt: agoMs(11 * MINUTE), lastId: 'earlier' });
+    await assertSucceeds(sendFeedback(ALICE));
+  });
+
+  it('refuses two at once under one stamp', async () => {
+    await assertFails(
+      sendFeedback(ALICE, {
+        extra: (batch, db) => batch.set(doc(collection(db, 'feedback')), feedbackDoc(ALICE)),
+      })
+    );
+  });
+
+  it("refuses stamping someone else's limits", async () => {
+    await assertFails(sendFeedback(ALICE, { limitsOwner: BOB }));
+  });
+});
+
+describe('feedback/{id}: reading and deleting', () => {
+  beforeEach(async () => {
+    await seed('feedback/fromAlice', feedbackDoc(ALICE, { createdAt: agoMs(1000) }));
+    await seed('feedback/fromBob', feedbackDoc(BOB, { createdAt: agoMs(1000) }));
+  });
+
+  it("never lets a player read anyone else's", async () => {
+    await assertFails(getDoc(doc(as(ALICE), 'feedback', 'fromBob')));
+    await assertFails(getDocs(query(collection(as(ALICE), 'feedback'), limit(10))));
+    await assertFails(getDocs(query(collection(as(ALICE), 'feedback'), where('uid', '==', BOB))));
+    await assertFails(getDocs(query(collection(as(null), 'feedback'), where('uid', '==', ALICE))));
+  });
+
+  it('lets a player list their own (to delete them), but not get or change one', async () => {
+    const mine = await assertSucceeds(getDocs(query(collection(as(ALICE), 'feedback'), where('uid', '==', ALICE))));
+    expect(mine.docs.map((d) => d.id)).toEqual(['fromAlice']);
+    await assertFails(getDoc(doc(as(ALICE), 'feedback', 'fromAlice')));
+    await assertFails(updateDoc(doc(as(ALICE), 'feedback', 'fromAlice'), { rating: 1 }));
+    await assertFails(setDoc(doc(as(ALICE), 'feedback', 'fromAlice'), feedbackDoc(ALICE)));
+  });
+
+  it('lets only the sender delete one', async () => {
+    await assertFails(deleteDoc(doc(as(BOB), 'feedback', 'fromAlice')));
+    await assertFails(deleteDoc(doc(as(null), 'feedback', 'fromAlice')));
+    await assertSucceeds(deleteDoc(doc(as(ALICE), 'feedback', 'fromAlice')));
+  });
+});
+
+describe('feedbackLimits/{uid}', () => {
+  beforeEach(async () => {
+    await seed('feedbackLimits/alice', { lastAt: agoMs(MINUTE), lastId: 'fromAlice' });
+  });
+
+  it('lets only the owner read and delete it', async () => {
+    await assertSucceeds(getDoc(doc(as(ALICE), 'feedbackLimits', ALICE)));
+    await assertFails(getDoc(doc(as(BOB), 'feedbackLimits', ALICE)));
+    await assertFails(getDocs(query(collection(as(ALICE), 'feedbackLimits'), limit(5))));
+    await assertFails(deleteDoc(doc(as(BOB), 'feedbackLimits', ALICE)));
+    await assertSucceeds(deleteDoc(doc(as(ALICE), 'feedbackLimits', ALICE)));
+  });
+
+  // A script could otherwise send, delete the stamp and send again at once,
+  // as fast as it liked. Now each extra send costs the one before it, so
+  // they can't pile up.
+  it('can only be deleted once the feedback it names is gone', async () => {
+    await env.clearFirestore();
+    await assertSucceeds(sendFeedback(ALICE, { id: 'first1' }));
+    await assertFails(deleteDoc(doc(as(ALICE), 'feedbackLimits', ALICE)));
+    await assertFails(sendFeedback(ALICE));
+    // "Delete my saved data": the feedback first, then the stamp
+    await assertSucceeds(deleteDoc(doc(as(ALICE), 'feedback', 'first1')));
+    await assertFails(deleteDoc(doc(as(BOB), 'feedbackLimits', ALICE)));
+    await assertSucceeds(deleteDoc(doc(as(ALICE), 'feedbackLimits', ALICE)));
+    // deleting a stamp that isn't there is fine (a player who never sent any)
+    await assertSucceeds(deleteDoc(doc(as(BOB), 'feedbackLimits', BOB)));
+  });
+
+  it('is never written on its own, so the limit cannot be wound back', async () => {
+    await assertFails(setDoc(doc(as(ALICE), 'feedbackLimits', ALICE), { lastAt: serverTimestamp(), lastId: 'fromAlice' }));
+    await assertFails(setDoc(doc(as(BOB), 'feedbackLimits', BOB), { lastAt: serverTimestamp(), lastId: 'nothing' }));
+    await assertFails(updateDoc(doc(as(ALICE), 'feedbackLimits', ALICE), { lastAt: agoMs(60 * MINUTE) }));
   });
 });

@@ -26,6 +26,7 @@ export {
 // Firestore Lite: plain REST calls with no offline cache or live listeners,
 // which nothing here needs, and this chunk is about 100 kB smaller gzipped.
 // Every read goes to the server, which is what the sync rules want anyway.
+// writeBatch sends player feedback together with its rate-limit stamp.
 export {
   initializeFirestore,
   getFirestore,
@@ -37,6 +38,7 @@ export {
   orderBy,
   limit,
   runTransaction,
+  writeBatch,
   setDoc,
   deleteDoc,
   getDoc,

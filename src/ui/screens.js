@@ -1,6 +1,7 @@
 // Full-screen menus for Pip's Christmas Eve Hunt: Title, Results, Santa's
 // Workshop (Upgrades / Rewards / Wardrobe), Joke Gallery, Leaderboard,
-// Privacy, Pause and Help. Everything is plain DOM + CSS (see screens.css): a
+// Privacy, Pause and Help, plus the Feedback card over the title and results.
+// Everything is plain DOM + CSS (see screens.css): a
 // cosy storybook-scrapbook look with washi tape, ribbon banners, candy stripes
 // and CSS doodles of Pip.
 
@@ -13,6 +14,7 @@ import { RARITY_COINS } from '../game/crackers.js';
 import { defaultSave } from '../core/save.js';
 import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
 import { PRIVACY_CONTACT } from '../cloud/config.js';
+import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, FEEDBACK_QUICK_MAX, FEEDBACK_COMMENT_MAX, cleanSeed } from '../cloud/feedback.js';
 import { isInAppBrowser, isIPad } from '../core/pwa.js';
 
 // ---------------------------------------------------------------------------
@@ -124,6 +126,15 @@ const SAFARI_GUEST_TEXT = "On iPhone and iPad, Safari may clear a guest's progre
 const HOME_APP_TEXT =
   "This Home Screen app keeps its own save, apart from Safari, so a guest starts fresh here. Signed in with Google in Safari? Sign in here too to bring that progress across. If signing in doesn't finish here, keep playing in Safari instead.";
 const HOME_APP_LINE = 'Signed in with Google in Safari? Sign in here too';
+
+// Feedback (docs/CLOUD.md, "Feedback"): one send per night. After one, the
+// Feedback links say thanks until the next night ends; localStorage keeps
+// that through a reload (the rules' 10-minute limit is the real guard).
+const FEEDBACK_LOCK_KEY = 'pips-hunt-feedback-sent';
+const FEEDBACK_THANKS = 'Thanks! You can send more after your next night';
+const FEEDBACK_TOAST = "Thank you! Pip's elves are reading it 🧝";
+const FEEDBACK_TIMEOUT_MS = 20000; // the facade waits its turn behind a sync, then one batch
+const TOAST_MS = 4500;
 
 // PWA notices (update ready, offline ready) appear only on these menus: never
 // over a night, its pause menu or the gallery peeked at from it.
@@ -529,6 +540,18 @@ function deleteErrorText(err, timedOut) {
   return "Couldn't delete just now. Please try again.";
 }
 
+// What the feedback card says when sendFeedback() answers { ok: false, error }.
+// Whatever was picked or typed stays in the card.
+function feedbackErrorText(err, timedOut) {
+  const code = errorText(err);
+  if (timedOut) return 'Sending is taking too long. Please check the internet and try again.';
+  if (/too-soon/i.test(code)) return "Pip's elves got a note from you a moment ago. Please try again in a few minutes. Thank you!";
+  if (looksOffline(err)) return "You're offline right now. Please try again when the internet is back.";
+  if (/invalid/i.test(code)) return "Something in the card isn't quite right. Please check it and try again.";
+  if (/cloud-off|no-cloud/i.test(code)) return "Feedback isn't switched on for this copy of the game.";
+  return "Couldn't send just now. Please try again.";
+}
+
 // "For grown-ups: what is 47 × 6?": a 2-digit times a 1-digit number. The
 // give-aways (×1, ×2, 20 × 7, 33 × 3…) are left out, and a new question
 // never repeats the last one.
@@ -761,6 +784,10 @@ export function createScreens(root, deps = {}) {
     // visit) that asked: { at, visit, a, b, value, passed, msg } | null
     gate: null,
     gateUntil: 0, // Date.now() until which a passed question lets taps go straight to Google
+    nightOn: false, // a night started from these menus and hasn't ended yet
+    feedbackLocked: false, // feedback was sent; more after the next night ends
+    fb: null, // the open feedback card: what was picked, its refs and send state
+    toastTimer: null,
     fallbackSave: defaultSave(),
   };
 
@@ -919,6 +946,8 @@ export function createScreens(root, deps = {}) {
     }
   };
   state.gateUntil = readGateUntil(); // a question answered before a reload of this tab still counts
+  state.feedbackLocked = readFeedbackLock(); // sent before a reload, and no night has ended since
+  const canFeedback = () => hasCloudMethod('sendFeedback');
   const cloudBoards = () => {
     let list = null;
     try {
@@ -934,13 +963,15 @@ export function createScreens(root, deps = {}) {
 
   const goHomeFn = () => deps.onGoHome || deps.onEndNight || null;
   // Start / Next Night: remembers how many jokes were already found, so the
-  // Gallery can tell which cards are new tonight.
+  // Gallery can tell which cards are new tonight, and that a night is on (its
+  // end lets the player send feedback again).
   const startNight = () => {
     const before = getSave().foundJokes.length;
     const fn =
       typeof deps.onStartNight === 'function'
         ? () => {
             state.nightFoundStart = before;
+            state.nightOn = true;
             deps.onStartNight();
           }
         : deps.onStartNight;
@@ -988,7 +1019,10 @@ export function createScreens(root, deps = {}) {
   // PWA notices ("new version", "works offline"): beside the stage, so screen
   // changes and rebuilds leave them (and a focused "Refresh") alone.
   const notice = h('div', { class: 'scr-notice hidden', role: 'status' });
-  el.append(snow, stage, notice);
+  // "Thank you!" after feedback is sent. Always in the page (empty while
+  // hidden), so screen readers hear the words when they appear.
+  const toast = h('div', { class: 'scr-toast', role: 'status' });
+  el.append(snow, stage, notice, toast);
   if (host) host.appendChild(el);
   injectExtraCss();
 
@@ -1012,6 +1046,9 @@ export function createScreens(root, deps = {}) {
   // `rebuild` is refresh() redrawing the same screen: notes that belong to
   // this visit (see state.auth) stay on screen.
   function open(name, build, { rebuild = false } = {}) {
+    // the feedback card stays over a redraw of its own screen (a cloud merge
+    // calls refresh()), and goes with any other
+    if (state.fb && state.current !== name) closeFeedback({ focus: false });
     clearTimers();
     state.opens++;
     if (!rebuild || state.current !== name) state.visit++;
@@ -1052,6 +1089,9 @@ export function createScreens(root, deps = {}) {
   }
 
   function hideAll() {
+    // nothing of the menus stays over a night
+    closeFeedback({ focus: false });
+    hideToast();
     clearTimers();
     const was = state.current;
     state.current = null;
@@ -1087,6 +1127,10 @@ export function createScreens(root, deps = {}) {
   // ---- Escape = back ----
   function onKeyDown(e) {
     if (state.current === null) return;
+    if (state.fb && e.key === 'Tab') {
+      trapFeedbackTab(e);
+      return;
+    }
     if (e.code !== 'Escape' && e.key !== 'Escape') return;
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -1117,6 +1161,11 @@ export function createScreens(root, deps = {}) {
   if (typeof document !== 'undefined') document.addEventListener('keydown', onMenuKeyGuard);
 
   function goBack() {
+    // the feedback card sits over the screen, so Esc is its first
+    if (state.fb) {
+      feedbackBack();
+      return;
+    }
     switch (state.current) {
       case 'title':
         // Esc closes an open question; the title itself has nowhere to go back to
@@ -1412,6 +1461,7 @@ export function createScreens(root, deps = {}) {
   let titleAuth = null; // { box, live, key } of the title's sign-in strip
 
   function showTitle() {
+    nightEnded(); // "Quit to title" from the pause menu ends a night too
     open('title', buildTitle);
   }
 
@@ -1697,9 +1747,9 @@ export function createScreens(root, deps = {}) {
     );
   }
 
-  // "Reset progress", "Privacy" and the install link share one line, so the
-  // title is no taller than before. Privacy is always there: its note covers
-  // this device's save too.
+  // "Reset progress", "Privacy", "Feedback" and the install link share one
+  // line, so the title is no taller than before. Privacy is always there: its
+  // note covers this device's save too.
   function renderResetArea() {
     if (!resetArea) return;
     resetArea.setAttribute('data-install', installKind());
@@ -1745,6 +1795,7 @@ export function createScreens(root, deps = {}) {
             h('span', { 'aria-hidden': 'true' }, '🔒'),
             ' Privacy'
           ),
+          feedbackLink('title', 'scr-link'),
           installLink()
         )
       );
@@ -2004,6 +2055,8 @@ export function createScreens(root, deps = {}) {
     state.lastSummary = normaliseSummary(summary);
     // the night is over: from now on the summary says what was new tonight
     state.nightFoundStart = null;
+    state.nightOn = true; // results always follow a night, however it began
+    nightEnded();
     renderResults(state.lastSummary, false);
   }
 
@@ -2229,6 +2282,10 @@ export function createScreens(root, deps = {}) {
         )
       );
     }
+
+    // a quiet link at the end of the page, so the footer keeps its buttons
+    const feedback = feedbackLink('results', 'scr-textlink');
+    if (feedback) sections.push(h('p', { class: 'scr-fbline' }, feedback));
 
     const confetti = s.newUnlocks.length || record ? (instant ? null : confettiLayer()) : null;
 
@@ -3736,15 +3793,31 @@ export function createScreens(root, deps = {}) {
     return true;
   }
 
-  function checkGate() {
-    const g = gateHere(state.current);
+  // How a question talks to the place it is shown. This one is for Google
+  // sign-in (title strip, account card); the feedback card has its own
+  // (feedbackGate), and both share the answer's 10 minutes.
+  const signInGate = {
+    get: () => gateHere(state.current),
+    render: () => renderAuthViews(),
+    focus: (key) => focusGate(key),
+    say: (text) => announce(text),
+    close: () => closeGate(),
+    passed: () => {
+      renderAuthViews();
+      focusGate('gate-go');
+      announce("That's right! Now press Continue to Google.");
+    },
+  };
+
+  function checkGate(ui = signInGate) {
+    const g = ui.get();
     if (!g || g.passed) return;
     const n = gateAnswer(g.value);
     if (n === null) {
       g.msg = { tone: 'info', text: 'Please type the answer as a number.' };
-      renderAuthViews();
-      focusGate('gate-input');
-      announce(g.msg.text);
+      ui.render();
+      ui.focus('gate-input');
+      ui.say(g.msg.text);
       return;
     }
     if (n === g.a * g.b) {
@@ -3757,9 +3830,7 @@ export function createScreens(root, deps = {}) {
         /* this page only, then */
       }
       play('pop');
-      renderAuthViews();
-      focusGate('gate-go');
-      announce("That's right! Now press Continue to Google.");
+      ui.passed();
       return;
     }
     // gentle: no buzzer, just a fresh question
@@ -3769,9 +3840,9 @@ export function createScreens(root, deps = {}) {
     g.value = '';
     g.msg = { tone: 'error', text: 'Not quite. Ask a grown-up to help!' };
     play('click');
-    renderAuthViews();
-    focusGate('gate-input');
-    announce(`Not quite. Ask a grown-up to help! New question: what is ${next.a} times ${next.b}?`);
+    ui.render();
+    ui.focus('gate-input');
+    ui.say(`Not quite. Ask a grown-up to help! New question: what is ${next.a} times ${next.b}?`);
   }
 
   let gateUid = 0;
@@ -3779,13 +3850,14 @@ export function createScreens(root, deps = {}) {
   // The question as a little form: a label, a number field, Check (Enter
   // works too) and ✕. A right answer swaps the field and Check for "Continue
   // to Google", whose click calls linkGoogle() at once: Safari opens popups
-  // only there.
-  function gateForm(g) {
+  // only there. (The feedback card never shows that: its `ui.passed` opens
+  // the note field instead.)
+  function gateForm(g, ui = signInGate) {
     const id = `scr-gate-${++gateUid}`;
     const msgId = `${id}-msg`;
     const close = h(
       'button',
-      { type: 'button', class: 'scr-gate__x', 'data-key': 'gate-close', 'aria-label': 'Not now', title: 'Not now', onclick: () => closeGate() },
+      { type: 'button', class: 'scr-gate__x', 'data-key': 'gate-close', 'aria-label': 'Not now', title: 'Not now', onclick: () => ui.close() },
       h('span', { 'aria-hidden': 'true' }, '✕')
     );
     if (g.passed) {
@@ -3837,7 +3909,7 @@ export function createScreens(root, deps = {}) {
     );
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      checkGate();
+      checkGate(ui);
     });
     return form;
   }
@@ -3982,7 +4054,7 @@ export function createScreens(root, deps = {}) {
         h(
           'span',
           { id: `${id}-d` },
-          "Your progress, snow name and scores are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
+          "Your progress, snow name, scores and any feedback you sent are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
         )
       ),
       h('div', { class: 'scr-confirm__btns' }, keep, yes)
@@ -4145,6 +4217,12 @@ export function createScreens(root, deps = {}) {
           item('🐧', 'Guests:', 'we keep a random player ID, the game progress and the snow name. No name, email or location.'),
           item('🔑', 'Google sign-in:', "Google Firebase also keeps the account's email, name and photo, so progress can follow you. Only grown-ups should do this."),
           item('🏆', 'Leaderboard:', 'shows only snow names made from our word lists, and scores.'),
+          // one-way to the game's maker, so the "no chat" below stays true
+          item(
+            '⭐',
+            'Feedback:',
+            "if you send some, we keep the stars, topic, quick notes, any grown-up's note, the map number, device type (touch or keyboard), app version and the player ID, to improve the game. Only the game's maker reads it; other players never see it."
+          ),
           item('🚫', 'Never:', 'no ads, no analytics, no tracking, no chat.'),
           item('☁️', 'Where:', 'Google Cloud (Firebase).'),
           item('⏳', 'How long:', 'until you delete it, or until saves unused for 2 years are cleared.'),
@@ -4205,7 +4283,7 @@ export function createScreens(root, deps = {}) {
       kids.push(deleteConfirm('scr-privacy-delq'));
     } else {
       kids.push(
-        h('p', null, "Deletes this game's cloud save, snow name and scores, then starts this device fresh."),
+        h('p', null, "Deletes this game's cloud save, snow name, scores and any feedback you sent, then starts this device fresh."),
         h(
           'div',
           { class: 'scr-privacy__btns' },
@@ -4215,6 +4293,480 @@ export function createScreens(root, deps = {}) {
     }
     if (note && !deleting) kids.push(h('p', { class: 'scr-privacy__note', 'data-tone': note.tone }, note.text));
     keepFocus(refs.box, () => refs.box.replaceChildren(...kids), () => refs.box.querySelector('button'));
+  }
+
+  // ---------------------------------------------------------------------------
+  // FEEDBACK: a card over the title or results, never during a night
+  // (docs/CLOUD.md, "Feedback"). Kids tap stars and chips; only a grown-up,
+  // past the same question as Google sign-in, can type a note.
+  // ---------------------------------------------------------------------------
+
+  function readFeedbackLock() {
+    try {
+      return window.localStorage.getItem(FEEDBACK_LOCK_KEY) === '1';
+    } catch {
+      return false; // no storage (private mode, tests): this page only
+    }
+  }
+
+  function setFeedbackLocked(on) {
+    state.feedbackLocked = !!on;
+    try {
+      if (on) window.localStorage.setItem(FEEDBACK_LOCK_KEY, '1');
+      else window.localStorage.removeItem(FEEDBACK_LOCK_KEY);
+    } catch {
+      /* this page only, then */
+    }
+    refreshFeedbackLinks();
+  }
+
+  // A night has ended (results, or quit to title): feedback may be sent again.
+  function nightEnded() {
+    if (!state.nightOn) return;
+    state.nightOn = false;
+    if (state.feedbackLocked) setFeedbackLocked(false);
+  }
+
+  // "⭐ Feedback" on the title's bottom line and at the end of the results.
+  // After a send it says thanks instead, until the next night ends. Only
+  // with a cloud that takes feedback.
+  function feedbackLink(where, cls) {
+    if (!canFeedback()) return null;
+    const locked = state.feedbackLocked;
+    return h(
+      'button',
+      {
+        type: 'button',
+        class: `${cls} scr-fblink`,
+        'data-key': 'feedback',
+        'data-where': where,
+        'data-cls': cls,
+        'aria-disabled': locked ? 'true' : null,
+        'aria-haspopup': locked ? null : 'dialog',
+        onclick: () => {
+          if (state.feedbackLocked) return;
+          play('click');
+          openFeedback(where);
+        },
+      },
+      h('span', { 'aria-hidden': 'true' }, '⭐'),
+      locked ? ` ${FEEDBACK_THANKS}` : ' Feedback'
+    );
+  }
+
+  // Swaps the Feedback links on screen for up-to-date ones, keeping focus.
+  function refreshFeedbackLinks() {
+    for (const old of stage.querySelectorAll('[data-key="feedback"]')) {
+      const fresh = feedbackLink(old.getAttribute('data-where'), old.getAttribute('data-cls'));
+      const focused = typeof document !== 'undefined' && document.activeElement === old;
+      if (fresh) old.replaceWith(fresh);
+      else old.remove();
+      if (focused) focusEl(fresh);
+    }
+  }
+
+  // The map number of the last night, or null on the title before any.
+  function islandSeed() {
+    try {
+      if (typeof deps.getIslandSeed === 'function') return cleanSeed(deps.getIslandSeed());
+    } catch {
+      return null;
+    }
+    return cleanSeed(state.lastSummary ? state.lastSummary.seed : null);
+  }
+
+  // How the grown-ups question talks to the feedback card (see signInGate).
+  // A right answer opens the note field at once: there's no popup to open.
+  const feedbackGate = {
+    get: () => (state.fb && state.fb.note === 'gate' ? state.fb.gate : null),
+    render: () => renderFeedbackNote(),
+    focus: (key) => focusFeedback(key),
+    say: (text) => sayFeedback(text),
+    close: () => closeFeedbackGate(),
+    passed: () => {
+      const fb = state.fb;
+      if (!fb) return;
+      fb.gate = null;
+      fb.note = 'open';
+      renderFeedbackNote(fb);
+      focusFeedback('fb-comment');
+      sayFeedback("That's right! Now type your note.");
+    },
+  };
+
+  function openFeedback(where) {
+    if (state.fb || state.feedbackLocked || !canFeedback()) return;
+    if (state.current !== 'title' && state.current !== 'results') return;
+    // one question at a time on the title
+    if (gateHere('title')) {
+      state.gate = null;
+      renderTitleAuth();
+    }
+    const fb = {
+      where,
+      rating: 0,
+      category: null,
+      quick: new Set(),
+      comment: '',
+      note: 'closed', // the grown-ups' note: 'closed', 'gate' (their question) or 'open'
+      gate: null,
+      sending: null, // { token } while sendFeedback() is out
+      seq: 0,
+      msg: null, // { tone, text } above the buttons
+      closed: false,
+      refs: null,
+    };
+    state.fb = fb;
+    fb.refs = buildFeedback(fb);
+    el.insertBefore(fb.refs.modal, toast);
+    // the screen underneath can't be reached (or focused) while the card is up
+    stage.setAttribute('inert', '');
+    notice.setAttribute('inert', '');
+    renderFeedbackNote(fb);
+    renderFeedbackFoot(fb);
+    focusFeedback('fb-star-1');
+  }
+
+  let fbUid = 0;
+
+  function buildFeedback(fb) {
+    const id = `scr-fb-${++fbUid}`;
+    const titleId = `${id}-title`;
+    const close = h(
+      'button',
+      { type: 'button', class: 'scr-gate__x scr-fb__x', 'data-key': 'fb-close', 'aria-label': 'Close', title: 'Close', onclick: () => feedbackBack({ whole: true }) },
+      h('span', { 'aria-hidden': 'true' }, '✕')
+    );
+    // a native radio group or checkbox under each chip: arrow keys, Space and
+    // screen readers work as usual, and the label is the big tap target
+    const option = (type, name, value, key, face, onChange, cls = 'scr-fb__chip') => {
+      const input = h('input', { type, name, value, class: 'scr-fb__input', 'data-key': key, required: type === 'radio' || null });
+      input.addEventListener('change', () => onChange(input));
+      return { input, label: h('label', { class: cls }, input, face) };
+    };
+    const group = (cls, legend, hint, kids) =>
+      h(
+        'fieldset',
+        { class: `scr-fb__group ${cls}` },
+        h('legend', { class: 'scr-fb__legend' }, legend, hint ? h('small', null, ` ${hint}`) : null),
+        h('div', { class: 'scr-fb__opts' }, kids)
+      );
+
+    const starOpts = [1, 2, 3, 4, 5].map((n) =>
+      option(
+        'radio',
+        `${id}-stars`,
+        String(n),
+        `fb-star-${n}`,
+        [h('span', { class: 'scr-fb__glyph', 'aria-hidden': 'true' }, '★'), h('span', { class: 'scr-sr' }, n === 1 ? '1 star' : `${n} stars`)],
+        (input) => {
+          if (!input.checked) return;
+          fb.rating = n;
+          syncStars(fb);
+          feedbackChanged(fb);
+          play('click');
+        },
+        'scr-fb__star'
+      )
+    );
+    const catOpts = FEEDBACK_CATEGORIES.map((c) =>
+      option('radio', `${id}-cat`, c.id, `fb-cat-${c.id}`, h('span', { class: 'scr-fb__face' }, h('span', { 'aria-hidden': 'true' }, c.icon), ` ${c.label}`), (input) => {
+        if (!input.checked) return;
+        fb.category = c.id;
+        feedbackChanged(fb);
+        play('click');
+      })
+    );
+    const quickOpts = FEEDBACK_QUICK.map((q) =>
+      option('checkbox', `${id}-quick`, q.id, `fb-quick-${q.id}`, h('span', { class: 'scr-fb__face' }, h('span', { 'aria-hidden': 'true' }, q.icon), ` ${q.label}`), (input) => {
+        if (input.checked && fb.quick.size < FEEDBACK_QUICK_MAX) fb.quick.add(q.id);
+        else if (!input.checked) fb.quick.delete(q.id);
+        input.checked = fb.quick.has(q.id);
+        syncQuick(fb);
+        feedbackChanged(fb);
+        play('click');
+      })
+    );
+
+    const stars = group('scr-fb__stars', 'How many stars?', null, starOpts.map((o) => o.label));
+    const cats = group('scr-fb__cats', 'What is it about?', null, catOpts.map((o) => o.label));
+    const quick = group('scr-fb__quick', 'Quick notes', `(up to ${FEEDBACK_QUICK_MAX}, if you like)`, quickOpts.map((o) => o.label));
+    const note = h('div', { class: 'scr-fb__note' });
+    // disabled as a whole while sending; the quick notes' own limit is separate
+    const fields = h('fieldset', { class: 'scr-fb__fields' }, stars, cats, quick, note);
+    const msg = h('p', { class: 'scr-fb__msg', hidden: true });
+    const foot = h('div', { class: 'scr-fb__btns' });
+    const live = h('p', { class: 'scr-sr', role: 'status' });
+    const card = h(
+      'div',
+      { class: 'scr-card scr-fb' },
+      close,
+      h('h2', { class: 'scr-banner scr-banner--small scr-fb__banner', id: titleId }, h('span', { class: 'scr-banner__icon', 'aria-hidden': 'true' }, '⭐'), h('span', null, 'Feedback')),
+      h('p', { class: 'scr-card__sub scr-fb__sub' }, "Tell Pip's elves what you think!"),
+      fields,
+      msg,
+      foot,
+      live
+    );
+    const modal = h('div', { class: 'scr-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId }, card);
+    return {
+      id,
+      modal,
+      card,
+      close,
+      fields,
+      stars,
+      cats,
+      note,
+      msg,
+      foot,
+      live,
+      starLabels: starOpts.map((o) => o.label),
+      quickInputs: quickOpts.map((o) => o.input),
+    };
+  }
+
+  // Stars up to the chosen one light up.
+  function syncStars(fb) {
+    fb.refs.starLabels.forEach((label, i) => label.classList.toggle('is-on', i < fb.rating));
+  }
+
+  // At the limit, the other quick notes rest until one is taken off.
+  function syncQuick(fb) {
+    const full = fb.quick.size >= FEEDBACK_QUICK_MAX;
+    for (const input of fb.refs.quickInputs) input.disabled = full && !fb.quick.has(input.value);
+  }
+
+  // A pick clears the "please pick…" hint it answers.
+  function feedbackChanged(fb) {
+    if (fb.rating) fb.refs.stars.removeAttribute('data-missing');
+    if (fb.category) fb.refs.cats.removeAttribute('data-missing');
+    if (fb.msg && fb.msg.tone === 'info') {
+      fb.msg = null;
+      renderFeedbackFoot(fb);
+    }
+  }
+
+  function focusFeedback(key) {
+    const fb = state.fb;
+    focusEl(fb && fb.refs && fb.refs.card.querySelector(`[data-key="${key}"]`));
+  }
+
+  function sayFeedback(text) {
+    if (state.fb && state.fb.refs) state.fb.refs.live.textContent = text;
+  }
+
+  // The grown-ups' note: a link, their question, or the field with a counter.
+  function renderFeedbackNote(fb = state.fb) {
+    if (!fb || !fb.refs) return;
+    const box = fb.refs.note;
+    let kids;
+    if (fb.note === 'gate' && fb.gate) {
+      kids = [gateForm(fb.gate, feedbackGate)];
+    } else if (fb.note === 'open') {
+      const id = `${fb.refs.id}-comment`;
+      const count = h('span', { class: 'scr-fb__count', id: `${id}-count` });
+      const area = h('textarea', {
+        id,
+        class: 'scr-fb__text',
+        rows: '3',
+        maxlength: String(FEEDBACK_COMMENT_MAX),
+        autocomplete: 'off',
+        'data-key': 'fb-comment',
+        'aria-describedby': `${id}-hint ${id}-count`,
+      });
+      area.value = fb.comment;
+      const syncCount = () => {
+        count.textContent = `${fb.comment.length} / ${FEEDBACK_COMMENT_MAX}`;
+        count.toggleAttribute('data-full', fb.comment.length >= FEEDBACK_COMMENT_MAX);
+      };
+      area.addEventListener('input', () => {
+        fb.comment = area.value.slice(0, FEEDBACK_COMMENT_MAX);
+        syncCount();
+      });
+      syncCount();
+      kids = [
+        h('label', { class: 'scr-fb__notelabel', for: id }, h('span', { class: 'scr-gate__for' }, 'For grown-ups:'), " a note for the game's maker (optional)"),
+        h('p', { class: 'scr-fb__notehint', id: `${id}-hint` }, "Please don't include names, addresses or contact details."),
+        area,
+        h('p', { class: 'scr-fb__countrow' }, count, h('span', { class: 'scr-sr' }, ' characters')),
+      ];
+    } else {
+      kids = [
+        h(
+          'button',
+          { type: 'button', class: 'scr-textlink', 'data-key': 'fb-note', onclick: () => noteTapped() },
+          h('span', { 'aria-hidden': 'true' }, '✏️'),
+          ' For grown-ups: add a note'
+        ),
+      ];
+    }
+    keepFocus(box, () => box.replaceChildren(...kids), () => box.querySelector('input, textarea, button'));
+  }
+
+  // Inside the 10 minutes of a right answer (here or before Google sign-in)
+  // the field opens at once; otherwise the grown-ups question comes first.
+  function noteTapped() {
+    const fb = state.fb;
+    if (!fb || fb.sending) return;
+    play('click');
+    if (gatePassed()) {
+      fb.note = 'open';
+      renderFeedbackNote(fb);
+      focusFeedback('fb-comment');
+      return;
+    }
+    fb.note = 'gate';
+    fb.gate = { ...gateQuestion(null), value: '', passed: false, msg: null };
+    renderFeedbackNote(fb);
+    focusFeedback('gate-input');
+  }
+
+  // Its ✕ (or Esc) puts the "add a note" link back. Answers whether it was open.
+  function closeFeedbackGate() {
+    const fb = state.fb;
+    if (!fb || fb.note !== 'gate') return false;
+    play('click');
+    fb.note = 'closed';
+    fb.gate = null;
+    renderFeedbackNote(fb);
+    focusFeedback('fb-note');
+    return true;
+  }
+
+  // The message (if any) and Not now / Send, also while sending.
+  function renderFeedbackFoot(fb = state.fb) {
+    if (!fb || !fb.refs) return;
+    const { foot, msg, fields, close } = fb.refs;
+    const busy = !!fb.sending;
+    fields.disabled = busy;
+    close.setAttribute('aria-disabled', busy ? 'true' : 'false');
+    msg.hidden = !fb.msg;
+    msg.textContent = fb.msg ? fb.msg.text : '';
+    msg.setAttribute('data-tone', fb.msg ? fb.msg.tone : '');
+    const cancel = button('Not now', { variant: 'snow', key: 'fb-cancel', onClick: () => feedbackBack({ whole: true }) });
+    const send = button(busy ? 'Sending…' : 'Send', {
+      icon: busy ? '❄' : '📮',
+      variant: 'red',
+      key: 'fb-send',
+      cls: busy ? 'is-busy' : '',
+      onClick: () => sendFeedbackNow(),
+    });
+    if (busy) {
+      cancel.setAttribute('aria-disabled', 'true');
+      send.setAttribute('aria-disabled', 'true');
+    }
+    keepFocus(foot, () => foot.replaceChildren(cancel, send), () => send);
+  }
+
+  // Esc, ✕ and "Not now". Esc and ✕ close an open grown-ups question first;
+  // nothing closes the card while it is sending.
+  function feedbackBack({ whole = false } = {}) {
+    const fb = state.fb;
+    if (!fb || fb.sending) return;
+    if (!whole && closeFeedbackGate()) return;
+    play('click');
+    closeFeedback();
+  }
+
+  function closeFeedback({ focus = true } = {}) {
+    const fb = state.fb;
+    if (!fb) return;
+    state.fb = null;
+    fb.closed = true;
+    if (fb.refs) fb.refs.modal.remove();
+    stage.removeAttribute('inert');
+    notice.removeAttribute('inert');
+    if (focus) focusEl(stage.querySelector('[data-key="feedback"]') || stage.querySelector('[data-autofocus]'));
+  }
+
+  // Tab and Shift+Tab go round the card, never out to the screen beneath.
+  function trapFeedbackTab(e) {
+    const fb = state.fb;
+    if (!fb || !fb.refs || typeof document === 'undefined') return;
+    // :disabled also covers controls inside the fieldset disabled while sending
+    const tabbable = [...fb.refs.card.querySelectorAll('button, input, textarea, select, a[href]')].filter(
+      (n) => !n.matches(':disabled') && n.tabIndex >= 0 && n.getClientRects().length > 0
+    );
+    if (!tabbable.length) return;
+    const first = tabbable[0];
+    const last = tabbable[tabbable.length - 1];
+    const active = document.activeElement;
+    const inside = fb.refs.card.contains(active);
+    if (e.shiftKey && (!inside || active === first)) {
+      e.preventDefault();
+      focusEl(last);
+    } else if (!e.shiftKey && (!inside || active === last)) {
+      e.preventDefault();
+      focusEl(first);
+    }
+  }
+
+  // Checks the picks, then hands them to the facade. A late answer still
+  // lands (a success after the time-out still thanks the player), unless the
+  // player has tried again since.
+  function sendFeedbackNow() {
+    const fb = state.fb;
+    if (!fb || fb.sending) return;
+    if (!fb.rating) return feedbackProblem(fb, 'stars', 'Please pick how many stars first.', 'fb-star-1');
+    if (!fb.category) return feedbackProblem(fb, 'cats', 'Please pick what it is about.', `fb-cat-${FEEDBACK_CATEGORIES[0].id}`);
+    const payload = {
+      rating: fb.rating,
+      category: fb.category,
+      quick: FEEDBACK_QUICK.map((q) => q.id).filter((qid) => fb.quick.has(qid)),
+      comment: fb.note === 'open' ? fb.comment : '',
+      islandSeed: islandSeed(),
+    };
+    play('whoosh');
+    const token = ++fb.seq;
+    fb.sending = { token };
+    fb.msg = null;
+    renderFeedbackFoot(fb);
+    sayFeedback('Sending your feedback…');
+    const finish = (res, timedOut) => {
+      if (fb.seq !== token) return;
+      if (timedOut && !fb.sending) return; // answered in time
+      fb.sending = null;
+      if (res.ok) {
+        setFeedbackLocked(true);
+        if (!fb.closed) closeFeedback();
+        if (state.current === 'title' || state.current === 'results') {
+          showToast(FEEDBACK_TOAST);
+          play('jingle');
+        }
+        return;
+      }
+      if (fb.closed) return; // the card is gone, and the player can try again later
+      fb.msg = { tone: 'error', text: feedbackErrorText(res.error, timedOut) };
+      play('error');
+      renderFeedbackFoot(fb);
+      sayFeedback(fb.msg.text);
+    };
+    authLater(() => finish({ ok: false, error: 'timeout' }, true), FEEDBACK_TIMEOUT_MS);
+    whenDone(cloudCall('sendFeedback', payload), (res) => finish(res, false));
+  }
+
+  // Something required isn't picked yet: say so, mark the group, focus it.
+  function feedbackProblem(fb, group, text, key) {
+    fb.msg = { tone: 'info', text };
+    fb.refs[group].setAttribute('data-missing', '');
+    restartAnim(fb.refs[group], 'is-nudge');
+    play('error');
+    renderFeedbackFoot(fb);
+    focusFeedback(key);
+    sayFeedback(text);
+  }
+
+  function showToast(text) {
+    if (state.toastTimer) clearTimeout(state.toastTimer);
+    toast.replaceChildren(h('span', { class: 'scr-toast__bubble' }, text));
+    state.toastTimer = setTimeout(hideToast, TOAST_MS);
+  }
+
+  function hideToast() {
+    if (state.toastTimer) clearTimeout(state.toastTimer);
+    state.toastTimer = null;
+    toast.replaceChildren();
   }
 
   // ---------------------------------------------------------------------------

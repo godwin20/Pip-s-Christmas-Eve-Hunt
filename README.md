@@ -88,9 +88,12 @@ This builds the game and makes `pips-christmas-eve-hunt.zip`, with `index.html` 
 Players start as guests, and grown-ups can sign in with Google so progress
 follows them to any device. A leaderboard ranks snow names such as
 "Jolly Penguin 42". It runs on Firebase's free plan (Authentication and
-Firestore Lite). `docs/CLOUD.md` has the design, and `src/cloud/config.js`
-holds the project config. Until a config is added, the game runs as before,
-saving on the device only.
+Firestore Lite). "⭐ Feedback" on the title and results screens sends stars, a
+topic and kid-safe quick notes (plus a note only grown-ups can add) to the
+`feedback` collection, which you read in the Firebase console.
+`docs/CLOUD.md` has the design, and `src/cloud/config.js` holds the project
+config. Until a config is added, the game runs as before, saving on the
+device only.
 
 ```bash
 npm run dev:cloud
