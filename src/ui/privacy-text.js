@@ -25,6 +25,13 @@ export const PRIVACY_FACTS = [
     lead: 'Feedback:',
     text: "if you send some, we keep the stars, topic, quick notes, any grown-up's note, the map number, device type (touch or keyboard), app version and the player ID, to improve the game. Only the game's maker reads it; other players never see it.",
   },
+  // the grown-ups gate (src/ui/age-gate.js): checked in the browser, and only
+  // whether it passed, and until when, is kept there
+  {
+    icon: '🎂',
+    lead: 'Birth month and year:',
+    text: "before Google sign-in or writing a grown-up's note, the game asks for them; the answer stays on the device and isn't sent anywhere.",
+  },
   // "tools": feedback is read to fix bugs, which Play's Data safety form
   // counts as the purpose "Analytics" (play/data-safety.md)
   { icon: '🚫', lead: 'Never:', text: 'no ads, no analytics tools, no tracking, no chat, no location.' },

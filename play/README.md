@@ -160,16 +160,27 @@ number: not worth it here.
       script you run once a year.
 - [ ] **PRIVACY_CONTACT (OWNER decision).** Switch it to the new public
       address, or keep your personal one.
-- [ ] **Neutral age screen (OWNER decision).** For mixed-audience apps the
-      Families policy allows services that aren't approved for children
-      (here: Google sign-in) only behind a *neutral age screen*, or used in a
-      way that collects no data from children. Ours is optional and behind a
-      times-table question, which the policy doesn't mention; a neutral age
-      screen asks the age without hinting at the answer (for example an empty
-      year-of-birth box). Swapping or adding one before Google sign-in and the
-      grown-ups' note would match the policy's own words. ASSISTANT can build
-      it. I couldn't confirm from a Google page whether Google treats its own
-      sign-in through Firebase as "not approved for child-directed services".
+- [ ] **Neutral age screen (ASSISTANT: done in the working tree, tested
+      against the emulators; OWNER: review, commit, deploy).** For
+      mixed-audience apps the Families policy allows services that aren't
+      approved for children (here: Google sign-in) only behind a *neutral age
+      screen*, or used in a way that collects no data from children. The
+      times-table question is gone: every "Sign in with Google" and the
+      grown-ups' feedback note now ask "When were you born?", with a month
+      and a year that both start blank, the full range of years, no hint of
+      which answers pass, and no going back to try another year (a "not now"
+      shows only "Ask a grown-up to help you with this one." for 24 hours on
+      that device, through reloads and reopening). 18 or over passes. The
+      month and year are checked on the device and never stored or sent, so
+      they are not declared in the Data safety form (see
+      `data-safety.md`); the privacy facts say so in one line. Details in
+      `docs/CLOUD.md`, "Grown-ups gate for Google sign-in". I couldn't confirm
+      from a Google page whether Google treats its own sign-in through
+      Firebase as "not approved for child-directed services"; either way the
+      gate now matches the policy's own words. If a grown-up on a shared
+      device gets the "not now" by mistake, clearing the browser's data for
+      the game and reloading brings the question back (there is
+      deliberately no in-game way round it).
 
 ## Phase 1: the Play Console account (OWNER)
 

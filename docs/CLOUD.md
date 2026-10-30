@@ -246,9 +246,11 @@ locally and refreshes the HUD, cosmetics and any open menu.
 
 ## Testing
 
-- **Unit tests:** `npm test` runs Vitest on the pure modules, the facade with
-  a fake SDK (including the "Confirm with Google" delete) and
-  `test/privacy-pages.test.js` (the public pages say what the game says).
+- **Unit tests:** `npm test` runs Vitest on the pure modules (including
+  `test/age-gate.test.js`: the grown-ups gate's age arithmetic and how a pass
+  and a "not now" are kept), the facade with a fake SDK (including the
+  "Confirm with Google" delete) and `test/privacy-pages.test.js` (the public
+  pages say what the game says).
 - **Rules tests:** `npm run test:rules` runs `firebase emulators:exec --only
   firestore` with Vitest and `@firebase/rules-unit-testing`. They cover every
   allow and deny case above.
@@ -260,6 +262,8 @@ locally and refreshes the HUD, cosmetics and any open menu.
 - **Browser testing:** `npm run dev:cloud` starts the auth and firestore
   emulators plus Vite in emulator mode on port 5174. The auth emulator's fake
   Google popup makes the whole sign-in flow testable without a real project.
+  To try the gate's "not now" again, remove `pips-hunt-gate-not-now` from the
+  page's localStorage in the browser's dev tools (or clear the site's data).
 
 ## Round 2: research-driven changes
 
@@ -295,14 +299,52 @@ quick sign-out and sign-in never trips the 5 s rule.
 
 ### Grown-ups gate for Google sign-in
 Linking Google stores the parent's email, name and photo in Firebase
-Authentication, so sign-in is for grown-ups:
+Authentication, so sign-in is for grown-ups. Google Play's Families policy
+allows a service like Google Sign-In in a mixed-audience app only behind a
+*neutral age screen*, and the FTC's COPPA guidance describes one: ask the
+month and year of birth with a full range of choices, no default answer, no
+hint of which ages pass, and no simple way for a child to go back and change
+the answer. The gate does that (`src/ui/age-gate.js` holds the pure parts,
+`screens.js` the form):
 - **Every "Sign in with Google" button** (title strip and account card) first
-  opens an in-page gate: "For grown-ups: what is 7 × 8?". The numbers are random,
-  a 2-digit times a 1-digit number, with a number input.
-- **A right answer** turns the gate's button into "Continue to Google". Its click
-  calls `cloud.linkGoogle()` synchronously, with no `await` before it.
-- **A wrong answer** shows a gentle "Ask a grown-up to help" and a new question.
-- **Once passed,** the gate stays open for 10 minutes in this tab.
+  opens an in-page gate: "When were you born?", with a month select (January
+  to December) and a year select (this year down to 1900, newest first). Both
+  start on a blank "Month" / "Year", one Continue button, and a ✕. Nothing in
+  the question says what age is needed: the account card's "For grown-ups"
+  heading stays outside it. Autofill is off, so the browser can't pick an
+  answer either.
+- **Continue with a blank** asks "Please pick a month and a year." and puts
+  focus on the first blank select.
+- **18 or over passes** (`GATE_MIN_AGE`). Only the month and year are asked,
+  so the birthday counts from the 1st of the month after the birth month: on
+  30 October 2026, October 2008 doesn't pass yet and September 2008 does. A
+  pass turns the gate into "✓ Thank you!" and "Continue to Google", whose
+  click calls `cloud.linkGoogle()` synchronously, with no `await` before it.
+  It holds for 10 minutes in this tab (sessionStorage
+  `pips-hunt-gate-until`), so the button goes straight to Google meanwhile.
+- **Anything younger** hides the question and shows only "Ask a grown-up to
+  help you with this one." (no age mentioned) and a ✕. That "not now" holds
+  for 24 hours on this device (localStorage `pips-hunt-gate-not-now`,
+  guarded, read afresh on every tap, so it covers every tab): Esc, ✕,
+  reopening, the leaderboard, the feedback card's note and a reload all show
+  the same message instead of the question. A "not now" also wins over a
+  pass from another tab, even a "Continue to Google" already showing there
+  (its click reads the "not now" first, synchronously, so the popup still
+  opens inside the click when there is none). Without storage (cookies and
+  site data blocked) it holds in the page's memory until a reload, and then
+  the question can come back: nothing on the device can keep it. The lock
+  lives in the browser's storage for the game, so a private window, another
+  browser or an iPhone / iPad Home Screen app (which keeps its own storage)
+  starts without it. A stored time more than a day ahead (the clock was put
+  back) still locks, cut to a day from now.
+- **The answer is never kept or sent:** Continue judges what the selects
+  show (even if a phone's picker hasn't sent its change event yet) and then
+  drops the month and year. Only the time a pass or a "not now" ends is
+  stored, in this browser. The privacy facts say so ("Birth month and
+  year").
+- **A grown-up on a shared device** who wants the question back early can
+  clear the browser's data for the game (site data / cookies and site data)
+  and reload the page. The game itself never offers a way round it.
 
 ### In-app browsers
 Google blocks sign-in inside apps like Instagram, Facebook, TikTok, Snapchat
@@ -423,6 +465,9 @@ grown-ups, from `PRIVACY_FACTS` in `src/ui/privacy-text.js`:
   grown-up's note, the map number, device type (touch or keyboard), app
   version and the player ID, to improve the game. Only the game's maker reads
   it; other players never see it. (Feedback is one-way, so "no chat" stays true.)
+- **Birth month and year:** before Google sign-in or writing a grown-up's
+  note, the game asks for them; the answer stays on the device and isn't sent
+  anywhere. (See "Grown-ups gate for Google sign-in".)
 - **Never:** no ads, no analytics tools, no tracking, no chat, no location.
   ("Tools": feedback is read to fix bugs, which Play's Data safety form
   counts as the purpose "Analytics".)
@@ -507,7 +552,7 @@ in the Firebase console (Firestore > `feedback`).
 ### The card (src/ui/screens.js)
 An in-page card over the title or results, in the game's style. The screen
 underneath is `inert`, Tab and Shift+Tab go round the card, and Esc closes
-an open grown-ups question first, then the card. It works with touch and at
+an open grown-ups gate first, then the card. It works with touch and at
 375 px wide (the card scrolls inside its overlay when it is taller than the
 window).
 1. **Stars:** 1–5, a labelled native radio group (arrow keys work), required.
@@ -518,10 +563,12 @@ window).
    jokes please (`loved`, `tooHard`, `tooEasy`, `broke`, `moreClothes`,
    `moreJokes`). The rest rest while 3 are picked.
 4. **A note, for grown-ups only:** "For grown-ups: add a note" opens the
-   same question as Google sign-in ("For grown-ups: what is A × B?", the
-   shared `gateForm` / `checkGate`), and a right answer holds for the same 10
-   minutes in this tab. Then a field (max 300 characters, live counter) says
-   not to include names, addresses or contact details.
+   same gate as Google sign-in ("When were you born?", the shared `gateForm`
+   / `checkGate`). A pass holds for the same 10 minutes in this tab, and a
+   "not now" from either place shows only the gentle message here too, for
+   the same 24 hours, even after closing and reopening the card. Then a field
+   (max 300 characters, live counter) says not to include names, addresses or
+   contact details.
 
 Send checks stars and topic first (a friendly "Please pick…" and focus on the
 group). Success closes the card and shows a toast, "Thank you! Pip's elves are

@@ -2182,7 +2182,9 @@
   align-items: center;
   justify-content: center;
   gap: 10px 14px;
-  width: min(760px, 100%);
+  /* room for the chip beside an open grown-ups gate, so the title stays as
+     short as it is */
+  width: min(800px, 100%);
 }
 
 .scr-cloudchip {
@@ -2308,10 +2310,11 @@
   color: var(--ink);
 }
 
-/* the grown-ups question in front of Google sign-in (title strip and the
-   leaderboard's account card): question | field + buttons, any message
-   underneath. A grid, not a wrapping flex row, so the strip stays as narrow
-   as its content and the cloud chip keeps its place beside it. */
+/* the grown-ups gate in front of Google sign-in (title strip and the
+   leaderboard's account card) and the feedback note: question | month, year
+   + buttons, any message underneath. A grid, not a wrapping flex row, so the
+   strip stays as narrow as its content and the cloud chip keeps its place
+   beside it. */
 .scr-gate {
   display: grid;
   grid-template-columns: auto auto;
@@ -2338,8 +2341,8 @@
   color: var(--green-dark);
 }
 
-/* a little snugger than the sign-in strip, so the open question adds next
-   to no height to the title */
+/* a little snugger than the sign-in strip, so the open gate adds next to
+   no height to the title */
 .scr-titleauth[data-view='gate'] {
   padding: 5px 12px;
 }
@@ -2358,18 +2361,25 @@
   max-width: 100%;
 }
 
-/* 1.1rem keeps iOS from zooming the page in when the field gets focus */
-.scr-gate__input {
-  width: 4.6em;
+/* month and year stay together when the row wraps */
+.scr-gate__picks {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+}
+
+/* as tall as the small buttons beside them, each as wide as its longest
+   choice; 1.05rem keeps iOS from zooming the page in when one gets focus */
+.scr-gate .scr-gate__select select {
+  width: auto;
   min-height: 40px;
-  padding: 5px 8px;
-  border: var(--line);
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: inset 0 3px 0 rgba(42, 27, 61, 0.1);
-  color: var(--ink);
-  font: 700 1.1rem/1.1 var(--font);
-  text-align: center;
+  padding: 5px 24px 5px 9px;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.scr-gate .scr-gate__select::after {
+  right: 9px;
 }
 
 .scr-gate__x {
@@ -5756,6 +5766,21 @@ p .scr-key {
   background: var(--sky);
 }
 
+/* the card is narrow too: question above the month and year */
+.scr-fb__note .scr-gate:not(.is-later) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* "not now": the gentle message with its ✕ beside it, in every place */
+.scr-gate.is-later {
+  grid-template-columns: minmax(0, auto) auto;
+}
+
+.scr-gate.is-later .scr-gate__done {
+  color: var(--ink);
+  text-align: left;
+}
+
 .scr-fb__notelabel {
   font-size: 0.95rem;
   font-weight: 600;
@@ -6079,7 +6104,7 @@ p .scr-key {
     gap: 4px 14px;
   }
 
-  /* grown-ups question: the question above the field on phones */
+  /* grown-ups gate: the question above the month and year on phones */
   .scr-gate {
     grid-template-columns: minmax(0, 1fr);
   }

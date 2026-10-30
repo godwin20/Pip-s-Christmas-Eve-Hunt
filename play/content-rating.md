@@ -73,7 +73,9 @@ play, grown-ups' gate). If the Console asks whether the app or its store
 listing appeals to children: **Yes**.
 
 **Ads:** the section repeats your Ads answer: **No ads**. With no ads, the
-neutral age screen and Families ads SDK questions don't apply.
+neutral age screen and Families ads SDK questions don't apply. (Those are
+about ads only. The game does have a neutral age screen, in front of Google
+sign-in and the feedback note: see the Families checklist below.)
 
 **Store presence:** Teacher Approved is optional. Google may rate the app for
 it but doesn't promise to. Leave it until after launch.
@@ -91,8 +93,8 @@ the Play Families Policy" (it then shows in the Data safety section).
 | Disclose personal and sensitive data collected from children | `data-safety.md` and the privacy policy. |
 | Mixed audiences must not send the advertising ID or hardware IDs from children or users of unknown age | None are sent. The Android app declares no permissions at all (with `enableNotifications: false` and `fallbackType: customtabs`). After the first upload, check the bundle's permissions in Play Console (**App bundle explorer**, or **Latest releases and bundles** in newer menus): the list should be empty, and in particular no `com.google.android.gms.permission.AD_ID`. |
 | No location for apps aimed only at children | No location at all. |
-| Mixed audiences: services not approved for children only behind a neutral age screen, or used so that no data is collected from children; children must never need them to play | Google sign-in (through Firebase) is optional and behind the grown-ups question, and the whole game works without it. The policy names a **neutral age screen** (asking age without hinting at the answer, for example a blank year of birth); the current gate is a times-table question, which the policy doesn't mention. See the decision in `play/README.md`, Phase 0. |
-| Social features: reminders, adult controls | None: no chat, no user-to-user content. Feedback is one-way to the developer, the grown-up note sits behind the grown-ups question, and the leaderboard has no free text. |
+| Mixed audiences: services not approved for children only behind a neutral age screen, or used so that no data is collected from children; children must never need them to play | Google sign-in (through Firebase) is optional and behind a **neutral age screen**, and the whole game works without it. Every "Sign in with Google" (and the grown-ups' feedback note) first asks "When were you born?": month and year, both blank to start, every year listed, no hint of which answers pass, and a younger answer can't be changed for 24 hours on that device. The answer stays on the device. See `play/README.md`, Phase 0, and `docs/CLOUD.md`, "Grown-ups gate for Google sign-in". |
+| Social features: reminders, adult controls | None: no chat, no user-to-user content. Feedback is one-way to the developer, the grown-up note sits behind the same age screen, and the leaderboard has no free text. |
 | COPPA, GDPR and other laws | Your responsibility as the developer; the game keeps the minimum (a random ID and progress for children). Get advice if you're unsure. |
 | No real or simulated gambling | None (see above). |
 
@@ -102,7 +104,7 @@ the Play Families Policy" (it then shows in the Data safety section).
 |---|---|
 | **Privacy policy** | `https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/privacy.html`. It must be a normal public web page (not a PDF), open worldwide without a login, and be linked inside the app too: the in-game Privacy screen links to it. |
 | **Ads** | **No, my app does not contain ads.** |
-| **Sign-in details** (formerly "App access") | No sign-in is needed anywhere: the whole game works as a guest, and Google sign-in is optional. Choose the option saying all functionality is available without special access (if the Console only offers adding instructions, you can add a note: "No login needed. Optional Sign in with Google is behind a grown-ups maths question; any Google account works."). |
+| **Sign-in details** (formerly "App access") | No sign-in is needed anywhere: the whole game works as a guest, and Google sign-in is optional. Choose the option saying all functionality is available without special access (if the Console only offers adding instructions, you can add a note: "No login needed. Optional Sign in with Google is behind a birth month and year question: pick any month and a year 19 or more years back (1990, say), then any Google account works. A younger answer hides the question on that browser for 24 hours (clear the site's data to see it again)."). |
 | **Advertising ID** | **No** (if the Console asks whether the app uses an advertising ID). |
 | **Government apps** | **No**, not a government app. |
 | **Financial features** | **My app doesn't provide any financial features.** |

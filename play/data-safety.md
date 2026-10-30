@@ -152,6 +152,7 @@ facts in `src/ui/privacy-text.js`:
 | No ads, no analytics tools, no tracking, no location | nothing under Location, Device IDs, Advertising | Never line |
 | Firebase stores it for us, never sold or shared | Shared: No | Where line |
 | Encrypted in transit | Yes | Safety line |
+| Birth month and year asked, checked on the device, never kept or sent | not declared (not collected) | Birth month and year line |
 | Deletion in game and by email, within 30 days | Yes, delete URL | delete page |
 
 Two things the privacy policy mentions that the form has no box for:
@@ -159,6 +160,18 @@ Firebase Authentication processes IP addresses and the browser's user agent
 to keep sign-in secure, and GitHub Pages (the web host) sees IP addresses
 when it sends the game's files. Neither is "collected" in Play's sense (the
 game doesn't receive or use them), and neither is location.
+
+**The birth month and year are not declared either.** The grown-ups gate in
+front of Google sign-in and the feedback note (the neutral age screen the
+Families policy asks for; `docs/CLOUD.md`, "Grown-ups gate for Google
+sign-in") asks "When were you born?", checks the answer in the browser and
+drops it. Only whether it passed, and until when, stays in that browser's
+storage; nothing about it is sent to Firebase or anywhere else. Play counts
+data as collected only when it is transmitted off the device, so this isn't
+"Personal info > Other info" (or anything else) in the form. The privacy
+policy and the in-game Privacy screen still say it in one line ("Birth month
+and year"). If the game ever sends the answer, or even the outcome, to the
+cloud, this changes.
 
 ## Sources
 

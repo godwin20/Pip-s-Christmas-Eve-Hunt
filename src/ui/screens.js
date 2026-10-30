@@ -17,6 +17,7 @@ import { PRIVACY_CONTACT } from '../cloud/config.js';
 import { PRIVACY_FACTS, DELETE_FACTS, POLICY_PAGE } from './privacy-text.js';
 import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, FEEDBACK_QUICK_MAX, FEEDBACK_COMMENT_MAX, cleanSeed } from '../cloud/feedback.js';
 import { isInAppBrowser, isIPad } from '../core/pwa.js';
+import { BIRTH_MONTHS, birthYears, ageCheck, passUntil, lockUntil, gateStep, gateOutcome, GATE_PASS_KEY, GATE_LOCK_KEY } from './age-gate.js';
 
 // ---------------------------------------------------------------------------
 // Static data
@@ -110,8 +111,9 @@ const BOARD_CACHE_MS = 30000; // tab hopping re-reads nothing for a while (Fires
 const PROFILE_RELOAD_MS = 1500; // the leaderboard write follows the name change's push
 const BOARD_RECHECK_MS = 7000; // the cloud spaces leaderboard writes 6 s apart
 const DELETE_TIMEOUT_MS = 20000; // deleting is several round trips (docs, account, a new guest)
-const GATE_OPEN_MS = 10 * 60 * 1000; // a passed grown-ups question holds this long in this tab
-const GATE_STORE_KEY = 'pips-hunt-gate-until'; // sessionStorage: this tab only
+// The grown-ups gate's "not now" (src/ui/age-gate.js): gentle, and it never
+// says what age would have passed.
+const GATE_NOT_NOW_TEXT = 'Ask a grown-up to help you with this one.';
 const LINKED_TEXT = 'All set! Your progress now follows your Google account. ✨';
 const SWITCHED_TEXT = "Welcome back! We found your saved progress and added this device's progress to it. ✨";
 const DELETED_TEXT = 'All deleted. This device starts fresh with a new snow name.';
@@ -577,26 +579,6 @@ function feedbackErrorText(err, timedOut) {
   return "Couldn't send just now. Please try again.";
 }
 
-// "For grown-ups: what is 47 × 6?": a 2-digit times a 1-digit number. The
-// give-aways (×1, ×2, 20 × 7, 33 × 3…) are left out, and a new question
-// never repeats the last one.
-function gateQuestion(prev, random = Math.random) {
-  for (let k = 0; k < 30; k++) {
-    const a = 12 + Math.floor(random() * 88); // 12..99
-    const b = 3 + Math.floor(random() * 7); // 3..9
-    if (a % 10 === 0 || a % 11 === 0) continue;
-    if (prev && prev.a === a && prev.b === b) continue;
-    return { a, b };
-  }
-  return prev && prev.a === 47 ? { a: 38, b: 7 } : { a: 47, b: 6 };
-}
-
-// The typed answer as a whole number, or null if it isn't one.
-function gateAnswer(text) {
-  const s = String(text == null ? '' : text).replace(/\s+/g, '');
-  return /^\d{1,4}$/.test(s) ? Number(s) : null;
-}
-
 // PRIVACY_CONTACT (src/cloud/config.js): a web page opens in a new tab and an
 // email address becomes a mailto: link. Anything else shows as plain text.
 function contactLink(raw) {
@@ -805,10 +787,12 @@ export function createScreens(root, deps = {}) {
     privacyBack: 'title',
     privacy: null, // refs of the open privacy screen
     confirmDelete: false, // "Delete my saved data?" is up (privacy screen or account card)
-    // The grown-ups question in front of Google sign-in, on the screen (and
-    // visit) that asked: { at, visit, a, b, value, passed, msg } | null
+    // The grown-ups gate in front of Google sign-in, on the screen (and visit)
+    // that asked: { at, visit, step, month, year, msg } | null, where step is
+    // 'ask', 'passed' or 'notNow' (src/ui/age-gate.js)
     gate: null,
-    gateUntil: 0, // Date.now() until which a passed question lets taps go straight to Google
+    gateUntil: 0, // Date.now() until which a pass lets taps go straight to Google
+    gateLockUntil: 0, // ...and until which a "not now" shows instead of the question
     nightOn: false, // a night started from these menus and hasn't ended yet
     feedbackLocked: false, // feedback was sent; more after the next night ends
     fb: null, // the open feedback card: what was picked, its refs and send state
@@ -973,7 +957,7 @@ export function createScreens(root, deps = {}) {
       return false;
     }
   };
-  state.gateUntil = readGateUntil(); // a question answered before a reload of this tab still counts
+  state.gateUntil = readGateUntil(); // a pass before a reload of this tab still counts
   state.feedbackLocked = readFeedbackLock(); // sent before a reload, and no night has ended since
   const canFeedback = () => hasCloudMethod('sendFeedback');
   const cloudBoards = () => {
@@ -1226,7 +1210,7 @@ export function createScreens(root, deps = {}) {
         break;
       case 'leaderboard':
         // like the title's reset confirm, Esc first closes an open question
-        // (grown-ups check, sign out, delete), then leaves
+        // (grown-ups gate, sign out, delete), then leaves
         if (closeGate()) break;
         if (state.lb && state.lb.confirmSignOut && !authBusy()) {
           cancelSignOut();
@@ -3774,37 +3758,74 @@ export function createScreens(root, deps = {}) {
     if (state.current === 'title' || state.current === 'leaderboard' || state.current === 'privacy') play(name);
   }
 
-  // ---- the grown-ups question in front of Google sign-in ----
+  // ---- the grown-ups gate in front of Google sign-in ----
   // Linking stores a grown-up's email, name and photo, so every "Sign in with
-  // Google" first asks a sum a young child can't do in their head. A right
-  // answer holds for GATE_OPEN_MS in this tab.
+  // Google" first asks a neutral "When were you born?" (src/ui/age-gate.js).
+  // A pass holds for GATE_OPEN_MS in this tab. A "not now" holds for a day on
+  // this device (every tab, through a reload) and shows a gentle message
+  // instead of the question, so going back to pick another year doesn't help.
+  // Only when each ends is kept, never the month or year.
 
   function readGateUntil() {
     try {
-      const v = Number(window.sessionStorage.getItem(GATE_STORE_KEY));
-      // a stored time further ahead than one window can't be ours
-      return Number.isFinite(v) && v <= Date.now() + GATE_OPEN_MS ? v : 0;
+      return passUntil(window.sessionStorage.getItem(GATE_PASS_KEY));
     } catch {
       return 0; // no storage (private mode, tests): this page only
     }
   }
 
-  function gatePassed() {
-    return Date.now() < state.gateUntil;
+  // Read afresh each time, so a "not now" from another tab counts here too.
+  // Without storage the one in memory still holds until the page reloads.
+  function gateLockedUntil() {
+    let raw = null;
+    try {
+      raw = window.localStorage.getItem(GATE_LOCK_KEY);
+    } catch {
+      /* this page only, then */
+    }
+    const stored = lockUntil(raw);
+    // a time too far ahead counts as a day from now: keep that instead
+    if (stored && String(stored) !== raw) keepGateTime('localStorage', GATE_LOCK_KEY, stored);
+    state.gateLockUntil = Math.max(lockUntil(state.gateLockUntil), stored);
+    return state.gateLockUntil;
   }
 
-  // The question, if it is open on `where` (the screen and visit that asked).
+  function keepGateTime(where, key, until) {
+    try {
+      window[where].setItem(key, String(until));
+    } catch {
+      /* this page only, then */
+    }
+  }
+
+  // 'go' (a pass holds), 'notNow' or 'ask': see gateStep.
+  function gateNow() {
+    return gateStep(state.gateUntil, gateLockedUntil());
+  }
+
+  // A gate just opened: the question with nothing picked, or the gentle
+  // message while a "not now" holds.
+  function newGate(step) {
+    return { step: step === 'notNow' ? 'notNow' : 'ask', month: '', year: '', msg: null };
+  }
+
+  // The control that gets focus when a gate opens or changes step.
+  function gateFocusKey(g) {
+    return g.step === 'passed' ? 'gate-go' : g.step === 'notNow' ? 'gate-close' : 'gate-month';
+  }
+
+  // The gate, if it is open on `where` (the screen and visit that asked).
   function gateHere(where) {
     const g = state.gate;
     return g && g.at === where && g.visit === state.visit && state.current === where ? g : null;
   }
 
-  // What the title strip's redraw key needs from the question (not the typing).
+  // What the title strip's redraw key needs from the gate (not the picking).
   function gateSig(g) {
-    return `${g.a}x${g.b}:${g.passed}:${g.msg ? g.msg.text : ''}`;
+    return `${g.step}:${g.msg ? g.msg.text : ''}`;
   }
 
-  // The box that holds the question on the current screen.
+  // The box that holds the gate on the current screen.
   function gateBox() {
     if (state.current === 'title') return titleAuth && titleAuth.box;
     if (state.current === 'leaderboard') return state.lb && state.lb.account && state.lb.account.body;
@@ -3817,15 +3838,17 @@ export function createScreens(root, deps = {}) {
   }
 
   // A tap on "Sign in with Google" (or its "Try again"). Inside the 10 minutes
-  // it goes straight to Google, still inside the click.
+  // of a pass it goes straight to Google, still inside the click (reading the
+  // "not now" first is synchronous too).
   function signInTapped(where) {
     if (IN_APP || authBusy() || !cloudReady()) return;
-    if (gatePassed()) {
+    const step = gateNow();
+    if (step === 'go') {
       startLinkGoogle();
       return;
     }
     play('click');
-    state.gate = { at: where, visit: state.visit, ...gateQuestion(null), value: '', passed: false, msg: null };
+    state.gate = { at: where, visit: state.visit, ...newGate(step) };
     // one question at a time
     if (where === 'title' && (state.confirmReset || state.homeHelp)) {
       state.confirmReset = false;
@@ -3835,11 +3858,13 @@ export function createScreens(root, deps = {}) {
     state.confirmDelete = false;
     state.auth.note = null;
     renderAuthViews();
-    focusGate('gate-input');
+    focusGate(gateFocusKey(state.gate));
+    if (state.gate.step === 'notNow') announce(GATE_NOT_NOW_TEXT);
   }
 
-  // Closes an open question (Esc, or its ✕), putting focus back on the
-  // Google button. Answers whether there was one to close.
+  // Closes an open gate (Esc, or its ✕), putting focus back on the Google
+  // button. Answers whether there was one to close. A "not now" stays: the
+  // button shows the same message again until the day is over.
   function closeGate() {
     if (!gateHere(state.current)) return false;
     play('click');
@@ -3850,9 +3875,9 @@ export function createScreens(root, deps = {}) {
     return true;
   }
 
-  // How a question talks to the place it is shown. This one is for Google
-  // sign-in (title strip, account card); the feedback card has its own
-  // (feedbackGate), and both share the answer's 10 minutes.
+  // How a gate talks to the place it is shown. This one is for Google sign-in
+  // (title strip, account card); the feedback card has its own
+  // (feedbackGate), and both share the pass's 10 minutes and the "not now".
   const signInGate = {
     get: () => gateHere(state.current),
     render: () => renderAuthViews(),
@@ -3862,62 +3887,86 @@ export function createScreens(root, deps = {}) {
     passed: () => {
       renderAuthViews();
       focusGate('gate-go');
-      announce("That's right! Now press Continue to Google.");
+      announce('Thank you! Now press Continue to Google.');
     },
   };
 
   function checkGate(ui = signInGate) {
     const g = ui.get();
-    if (!g || g.passed) return;
-    const n = gateAnswer(g.value);
-    if (n === null) {
-      g.msg = { tone: 'info', text: 'Please type the answer as a number.' };
+    if (!g || g.step !== 'ask') return;
+    // a "not now" from another tab meanwhile: no answering here either
+    if (gateNow() === 'notNow') {
+      gateNotNow(g, ui);
+      return;
+    }
+    const result = ageCheck(g.month, g.year, new Date());
+    if (result === 'missing') {
+      g.msg = { tone: 'info', text: 'Please pick a month and a year.' };
       ui.render();
-      ui.focus('gate-input');
+      ui.focus(g.month ? 'gate-year' : 'gate-month');
       ui.say(g.msg.text);
       return;
     }
-    if (n === g.a * g.b) {
-      g.passed = true;
-      g.msg = { tone: 'ok', text: "That's right, thank you!" };
-      state.gateUntil = Date.now() + GATE_OPEN_MS;
-      try {
-        window.sessionStorage.setItem(GATE_STORE_KEY, String(state.gateUntil));
-      } catch {
-        /* this page only, then */
-      }
+    // the answer goes now: only when the outcome ends is kept
+    const kept = gateOutcome(result, Date.now());
+    g.month = '';
+    g.year = '';
+    if (result === 'pass') {
+      g.step = 'passed';
+      g.msg = { tone: 'ok', text: 'Thank you!' };
+      state.gateUntil = kept.passUntil;
+      keepGateTime('sessionStorage', GATE_PASS_KEY, kept.passUntil);
       play('pop');
       ui.passed();
       return;
     }
-    // gentle: no buzzer, just a fresh question
-    const next = gateQuestion(g);
-    g.a = next.a;
-    g.b = next.b;
-    g.value = '';
-    g.msg = { tone: 'error', text: 'Not quite. Ask a grown-up to help!' };
-    play('click');
+    state.gateLockUntil = kept.lockUntil;
+    keepGateTime('localStorage', GATE_LOCK_KEY, kept.lockUntil);
+    play('click'); // gentle: no buzzer
+    gateNotNow(g, ui);
+  }
+
+  // The question goes, and the gentle message takes its place.
+  function gateNotNow(g, ui) {
+    g.step = 'notNow';
+    g.msg = null;
     ui.render();
-    ui.focus('gate-input');
-    ui.say(`Not quite. Ask a grown-up to help! New question: what is ${next.a} times ${next.b}?`);
+    ui.focus('gate-close');
+    ui.say(GATE_NOT_NOW_TEXT);
   }
 
   let gateUid = 0;
 
-  // The question as a little form: a label, a number field, Check (Enter
-  // works too) and ✕. A right answer swaps the field and Check for "Continue
-  // to Google", whose click calls linkGoogle() at once: Safari opens popups
-  // only there. (The feedback card never shows that: its `ui.passed` opens
-  // the note field instead.)
+  // The gate as a little form: "When were you born?", a month and a year
+  // (both start blank, and nothing says which answers pass), Continue and ✕.
+  // A pass swaps them for "Continue to Google", whose click calls
+  // linkGoogle() at once: Safari opens popups only there. (The feedback card
+  // never shows that: its `ui.passed` opens the note field instead.) A "not
+  // now" shows only the gentle message and ✕.
   function gateForm(g, ui = signInGate) {
     const id = `scr-gate-${++gateUid}`;
     const msgId = `${id}-msg`;
     const close = h(
       'button',
-      { type: 'button', class: 'scr-gate__x', 'data-key': 'gate-close', 'aria-label': 'Not now', title: 'Not now', onclick: () => ui.close() },
+      {
+        type: 'button',
+        class: 'scr-gate__x',
+        'data-key': 'gate-close',
+        'aria-label': g.step === 'notNow' ? 'Close' : 'Not now',
+        title: g.step === 'notNow' ? 'Close' : 'Not now',
+        onclick: () => ui.close(),
+      },
       h('span', { 'aria-hidden': 'true' }, '✕')
     );
-    if (g.passed) {
+    if (g.step === 'notNow') {
+      return h(
+        'div',
+        { class: 'scr-gate is-later', role: 'group', 'aria-labelledby': msgId },
+        h('p', { class: 'scr-gate__done', id: msgId }, h('span', { 'aria-hidden': 'true' }, '🐧 '), GATE_NOT_NOW_TEXT),
+        close
+      );
+    }
+    if (g.step === 'passed') {
       const ready = cloudReady();
       const go = button(ready ? 'Continue to Google' : 'One moment…', {
         icon: 'G',
@@ -3925,47 +3974,69 @@ export function createScreens(root, deps = {}) {
         size: 'small',
         key: 'gate-go',
         cls: `scr-gbtn${ready ? '' : ' is-waiting'}`,
-        // no await, no promise, nothing in between: straight to the facade
-        onClick: () => startLinkGoogle(),
+        // no await, no promise, nothing in between: straight to the facade.
+        // A "not now" from another tab since the pass still wins; reading it
+        // is synchronous, so the popup still opens inside the click.
+        onClick: () => {
+          if (gateNow() === 'notNow') {
+            const cur = ui.get();
+            if (cur) gateNotNow(cur, ui);
+            return;
+          }
+          startLinkGoogle();
+        },
       });
       if (!ready) go.setAttribute('aria-disabled', 'true');
       return h(
         'div',
-        { class: 'scr-gate is-passed', role: 'group', 'aria-label': 'Grown-ups check' },
-        h('p', { class: 'scr-gate__done' }, h('span', { 'aria-hidden': 'true' }, '✓ '), g.msg ? g.msg.text : "That's right, thank you!"),
+        { class: 'scr-gate is-passed', role: 'group', 'aria-labelledby': msgId },
+        h('p', { class: 'scr-gate__done', id: msgId }, h('span', { 'aria-hidden': 'true' }, '✓ '), g.msg ? g.msg.text : 'Thank you!'),
         h('span', { class: 'scr-gate__row' }, go, close)
       );
     }
-    const input = h('input', {
-      id,
-      class: 'scr-gate__input',
-      type: 'text',
-      inputmode: 'numeric',
-      pattern: '[0-9]*',
-      maxlength: '4',
-      autocomplete: 'off',
-      autocorrect: 'off',
-      spellcheck: 'false',
-      enterkeyhint: 'done',
-      'data-key': 'gate-input',
-      'aria-invalid': g.msg && g.msg.tone === 'error' ? 'true' : null,
-      'aria-describedby': g.msg ? msgId : null,
-    });
-    input.value = g.value;
-    input.addEventListener('input', () => {
-      g.value = input.value;
-    });
-    const check = button('Check', { icon: '✓', variant: 'green', size: 'small', key: 'gate-check' });
-    check.setAttribute('type', 'submit');
+    // each starts on its blank first choice, so nothing is picked for anyone
+    // (autocomplete off: the browser's autofill would pick it for them)
+    const sels = {};
+    const pick = (part, label, choices) => {
+      const sel = h(
+        'select',
+        {
+          id: `${id}-${part}`,
+          class: 'scr-gate__pick',
+          'data-key': `gate-${part}`,
+          autocomplete: 'off',
+          'aria-invalid': g.msg && g.msg.tone === 'info' && !g[part] ? 'true' : null,
+          'aria-describedby': g.msg ? msgId : null,
+        },
+        h('option', { value: '' }, label),
+        choices.map(([value, text]) => h('option', { value: String(value) }, text))
+      );
+      sel.value = g[part];
+      const keep = () => {
+        g[part] = sel.value;
+      };
+      sel.addEventListener('input', keep);
+      sel.addEventListener('change', keep);
+      sels[part] = sel;
+      return [h('label', { class: 'scr-sr', for: sel.id }, `Birth ${label.toLowerCase()}`), h('span', { class: 'scr-select scr-gate__select' }, sel)];
+    };
+    const month = pick('month', 'Month', BIRTH_MONTHS.map((name, i) => [i + 1, name]));
+    const year = pick('year', 'Year', birthYears(new Date()).map((y) => [y, y]));
+    const next = button('Continue', { variant: 'green', size: 'small', key: 'gate-check' });
+    next.setAttribute('type', 'submit');
     const form = h(
       'form',
-      { class: 'scr-gate', novalidate: true, 'aria-label': 'Grown-ups check', autocomplete: 'off' },
-      h('label', { class: 'scr-gate__q', for: id }, h('span', { class: 'scr-gate__for' }, 'For grown-ups:'), ` what is ${g.a} × ${g.b}?`),
-      h('span', { class: 'scr-gate__row' }, input, check, close),
+      { class: 'scr-gate', novalidate: true, 'aria-labelledby': `${id}-q`, autocomplete: 'off' },
+      h('p', { class: 'scr-gate__q', id: `${id}-q` }, 'When were you born?'),
+      h('span', { class: 'scr-gate__row' }, h('span', { class: 'scr-gate__picks' }, month, year), next, close),
       g.msg ? h('p', { class: 'scr-gate__msg', id: msgId, 'data-tone': g.msg.tone }, g.msg.text) : null
     );
     form.addEventListener('submit', (e) => {
       e.preventDefault();
+      // judge what the selects show, even if a phone's picker hasn't sent
+      // its change yet
+      g.month = sels.month.value;
+      g.year = sels.year.value;
       checkGate(ui);
     });
     return form;
@@ -4453,7 +4524,7 @@ export function createScreens(root, deps = {}) {
   // ---------------------------------------------------------------------------
   // FEEDBACK: a card over the title or results, never during a night
   // (docs/CLOUD.md, "Feedback"). Kids tap stars and chips; only a grown-up,
-  // past the same question as Google sign-in, can type a note.
+  // past the same gate as Google sign-in, can type a note.
   // ---------------------------------------------------------------------------
 
   function readFeedbackLock() {
@@ -4530,8 +4601,8 @@ export function createScreens(root, deps = {}) {
     return cleanSeed(state.lastSummary ? state.lastSummary.seed : null);
   }
 
-  // How the grown-ups question talks to the feedback card (see signInGate).
-  // A right answer opens the note field at once: there's no popup to open.
+  // How the grown-ups gate talks to the feedback card (see signInGate). A
+  // pass opens the note field at once: there's no popup to open.
   const feedbackGate = {
     get: () => (state.fb && state.fb.note === 'gate' ? state.fb.gate : null),
     render: () => renderFeedbackNote(),
@@ -4545,7 +4616,7 @@ export function createScreens(root, deps = {}) {
       fb.note = 'open';
       renderFeedbackNote(fb);
       focusFeedback('fb-comment');
-      sayFeedback("That's right! Now type your note.");
+      sayFeedback('Thank you! Now type your note.');
     },
   };
 
@@ -4563,7 +4634,7 @@ export function createScreens(root, deps = {}) {
       category: null,
       quick: new Set(),
       comment: '',
-      note: 'closed', // the grown-ups' note: 'closed', 'gate' (their question) or 'open'
+      note: 'closed', // the grown-ups' note: 'closed', 'gate' (the grown-ups gate) or 'open'
       gate: null,
       sending: null, // { token } while sendFeedback() is out
       seq: 0,
@@ -4756,25 +4827,28 @@ export function createScreens(root, deps = {}) {
         ),
       ];
     }
-    keepFocus(box, () => box.replaceChildren(...kids), () => box.querySelector('input, textarea, button'));
+    keepFocus(box, () => box.replaceChildren(...kids), () => box.querySelector('select, textarea, button'));
   }
 
-  // Inside the 10 minutes of a right answer (here or before Google sign-in)
-  // the field opens at once; otherwise the grown-ups question comes first.
+  // Inside the 10 minutes of a pass (here or before Google sign-in) the
+  // field opens at once; otherwise the gate comes first, or, while a "not
+  // now" holds, only its gentle message (closing the card doesn't reset it).
   function noteTapped() {
     const fb = state.fb;
     if (!fb || fb.sending) return;
     play('click');
-    if (gatePassed()) {
+    const step = gateNow();
+    if (step === 'go') {
       fb.note = 'open';
       renderFeedbackNote(fb);
       focusFeedback('fb-comment');
       return;
     }
     fb.note = 'gate';
-    fb.gate = { ...gateQuestion(null), value: '', passed: false, msg: null };
+    fb.gate = newGate(step);
     renderFeedbackNote(fb);
-    focusFeedback('gate-input');
+    focusFeedback(gateFocusKey(fb.gate));
+    if (fb.gate.step === 'notNow') sayFeedback(GATE_NOT_NOW_TEXT);
   }
 
   // Its ✕ (or Esc) puts the "add a note" link back. Answers whether it was open.
@@ -4814,7 +4888,7 @@ export function createScreens(root, deps = {}) {
     keepFocus(foot, () => foot.replaceChildren(cancel, send), () => send);
   }
 
-  // Esc, ✕ and "Not now". Esc and ✕ close an open grown-ups question first;
+  // Esc, ✕ and "Not now". Esc and ✕ close an open grown-ups gate first;
   // nothing closes the card while it is sending.
   function feedbackBack({ whole = false } = {}) {
     const fb = state.fb;
