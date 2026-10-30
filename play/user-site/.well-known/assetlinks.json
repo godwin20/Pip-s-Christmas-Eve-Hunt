@@ -1,0 +1,15 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.godwin20.pipshunt",
+      "sha256_cert_fingerprints": [
+        "REPLACE_ME_1_UPLOAD_KEY_SHA256_FROM_KEYTOOL",
+        "REPLACE_ME_2_PLAY_APP_SIGNING_KEY_SHA256",
+        "REPLACE_ME_3_PLAY_APP_SIGNING_KEY_SHA256_OR_DELETE_THIS_LINE",
+        "REPLACE_ME_4_PLAY_APP_SIGNING_KEY_SHA256_OR_DELETE_THIS_LINE"
+      ]
+    }
+  }
+]

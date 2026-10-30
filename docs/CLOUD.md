@@ -192,7 +192,7 @@ and `createdAt`, or null if it can't be sent). See "Feedback" below.
 | Member | Meaning |
 |---|---|
 | `enabled` | `cloudConfig() !== null` |
-| `status` | `{ state: 'off'\|'connecting'\|'syncing'\|'synced'\|'offline'\|'error', isAnonymous, accountName, lastSyncedAt, error }`. `accountName` is the Google display name's first word or `null`. |
+| `status` | `{ state: 'off'\|'connecting'\|'syncing'\|'synced'\|'offline'\|'error', ready, isAnonymous, accountName, lastSyncedAt, error, needsReauth }`. `accountName` is the Google display name's first word or `null`. `needsReauth` is true while a delete waits for "Confirm with Google" (see "Delete my data"). |
 | `start()` | Promise. Signs in, then the first push. Safe to call twice. |
 | `hold(on)` | main.js calls `hold(true)` when a night starts and `hold(false)` when it ends or is quit. While held, `markDirty` and `flush` only flag; releasing the hold pushes if dirty. |
 | `markDirty({ now })` | Flags the save. Pushes after 2 s, or at once with `now: true`. |
@@ -202,6 +202,8 @@ and `createdAt`, or null if it can't be sent). See "Feedback" below.
 | `resetEverywhere()` | Promise. Call after a local reset that raised `epoch`. Overwrites the cloud save and deletes, then recreates, the leaderboard entry. |
 | `getLeaderboard(board, { limit = 25 })` | Promise `{ entries: [{ rank, name, score, isMe }], me: { rank, score } \| null, error? }`. Hidden or zero scores aren't listed. |
 | `setProfile(partial)` | Merges into `save.profile`, sets `setAt`, persists locally, then `markDirty({ now: true })`. |
+| `deleteEverything()` | Promise `{ ok, accountDeleted?, guest?, needsReauth?, error? }`, never rejects. See "Delete my data" below. |
+| `reauthAndDelete()` | Promise `{ ok, accountDeleted?, needsReauth?, cancelled?, reason?, error? }`, never rejects. Call it straight from the tap on "Confirm with Google to finish deleting". |
 | `sendFeedback(payload)` | Promise `{ ok, error? }`, never rejects. Writes one `feedback` doc (see "Feedback" below). `error` is `'cloud-off'`, `'invalid'`, `'offline'`, `'too-soon'` or a Firebase code. |
 | `BOARDS` | `[{ id: 'bestNight', label: 'Best Night', icon: '🌙', unit: 'presents' }, { id: 'totalPresents', label: 'All Presents', icon: '🎁', unit: 'presents' }, { id: 'jokesFound', label: 'Jokes Found', icon: '🎉', unit: 'jokes' }]` |
 
@@ -244,10 +246,17 @@ locally and refreshes the HUD, cosmetics and any open menu.
 
 ## Testing
 
-- **Unit tests:** `npm test` runs Vitest on the pure modules.
+- **Unit tests:** `npm test` runs Vitest on the pure modules, the facade with
+  a fake SDK (including the "Confirm with Google" delete) and
+  `test/privacy-pages.test.js` (the public pages say what the game says).
 - **Rules tests:** `npm run test:rules` runs `firebase emulators:exec --only
   firestore` with Vitest and `@firebase/rules-unit-testing`. They cover every
   allow and deny case above.
+- **Sync tests:** `npm run test:cloud` runs the facade against the auth and
+  firestore emulators. The auth emulator deletes any user at once (it never
+  asks for a recent sign-in), so the "Confirm with Google" test wraps
+  `deleteUser` to refuse a Google user until `reauthenticateWithCredential`
+  has run with that account's (fake) Google token.
 - **Browser testing:** `npm run dev:cloud` starts the auth and firestore
   emulators plus Vite in emulator mode on port 5174. The auth emulator's fake
   Google popup makes the whole sign-in flow testable without a real project.
@@ -325,48 +334,153 @@ unproven (it reportedly worked with the default `*.firebaseapp.com`
   Google account, play Pip's hunt in Safari."
 
 ### Delete my data
-The facade gains `deleteEverything()`, which resolves `{ ok, error? }`:
+The facade has `deleteEverything()`, which resolves `{ ok, accountDeleted?,
+guest?, needsReauth?, error? }` and never rejects:
 1. Delete the player's own `feedback` docs (a `where('uid', '==', uid)`
    query, 100 at a time) and `feedbackLimits/{uid}` (see "Feedback" below).
    If the deployed rules predate feedback, the query is refused; then no
    feedback can exist, so that refusal is not a failure.
 2. Delete `leaderboard/{uid}` and `players/{uid}`.
-3. Try `deleteUser` on the auth user. If that fails, for example
-   `auth/requires-recent-login` on a Google user, sign out instead.
+3. `deleteUser` on the auth user.
 4. Replace the local save with a fresh one, keeping only sound settings and a
    new random name.
-5. Sign in anonymously as a new uid.
+5. Sign in anonymously as a new uid, and sync.
 
 A failure in steps 1–2 changes nothing on the device, so the player can try again.
 
+**A Google sign-in is never left behind quietly.** It holds the grown-up's
+email address, name and profile photo, and Firebase refuses to delete it
+unless the sign-in is fresh (`auth/requires-recent-login`, after about 5
+minutes). So when `deleteUser` fails for a Google player who is still signed
+in:
+- The cloud docs are gone already, and the device starts fresh at once
+  (step 4), but the player **stays signed in** as the Google uid. The answer
+  is `{ ok: false, needsReauth: true, error }`, and `status.needsReauth` stays
+  true until it is finished.
+- Meanwhile nothing is written as that uid (no push, reset, feedback or
+  board write; the localStorage "deleted" marker and an in-memory copy stop
+  them), sign-out is refused, and the game's other tabs drop their copy of
+  the progress as before. The marker survives a reload, so the question comes
+  back after one.
+- The UI shows "Confirm with Google to finish deleting". Its click calls
+  `cloud.reauthAndDelete()` synchronously: `reauthenticateWithPopup` runs
+  before any `await` (like `linkGoogle`), with `login_hint` set to the
+  account's email. Then, in turn with other account changes: the docs again
+  (another device on the account may have synced meanwhile), `deleteUser`,
+  then a new anonymous player that syncs the device's (fresh) save. Anything
+  played since step 4 in the same page is new progress and stays. A reload
+  or a new tab while the delete waits starts fresh once more (`checkDeleted`
+  can't tell a stale copy of the deleted progress from new play, so it errs
+  on the side of the delete).
+- A closed popup answers `{ cancelled: true, reason: 'cancelled' }`, another
+  Google account `reason: 'wrong-account'` (Firebase's `auth/user-mismatch`),
+  and the rest as in `linkGoogle` (`blocked`, `offline`, `failed`), each with
+  `needsReauth: true` while the sign-in still waits. The UI keeps the button
+  and says what happened. `reauthAndDelete()` for a player with nothing
+  waiting answers `{ ok: false, error: 'not-pending' }` and never opens a popup.
+- If the popup can't work on that device, the panel gives `PRIVACY_CONTACT`:
+  the owner deletes the user in the Firebase console (Authentication) within
+  30 days. The device then finds itself signed out at its next token refresh
+  and carries on as a new guest.
+
+The other `deleteUser` failures sign out instead, as before, and answer
+`{ ok: true, accountDeleted: false }`: a guest's sign-in (`guest: true`; it
+holds only the random player ID, and can't be confirmed again), or a Google
+one Firebase had already signed out by itself (`guest: false`; the UI says to
+sign in again and delete straight away). `auth/user-not-found` counts as
+deleted.
+
+**Check on the real project before release:** delete a guest who has played
+for more than 5 minutes and see in the console (Authentication > Users)
+whether Firebase kept its anonymous user. If it does, those are random IDs
+with nothing linked to them; the owner can clear them by hand with the
+2-year tidy-up. The public pages say so either way (`DELETE_FACTS.guest`:
+"Firebase may keep that ID"), and promise only that a Google sign-in goes.
+
+**Not covered:** another device still signed in to the deleted Google
+account keeps a working token for up to an hour and could sync again in that
+time (it can't know about the delete). Only server code could stop that; the
+owner's by-hand tidy-up clears what is left.
+
 The UI offers "Delete my saved data" with an in-page confirm, on both the
-privacy screen and the account card.
+privacy screen and the account card. While `status.needsReauth` is true, both
+show the "Confirm with Google" panel instead (with its own notes), the title's
+sign-in strip says "Almost deleted" with a "Finish deleting" button that opens
+the privacy screen, and the cloud chip reads "Almost deleted: confirm with
+Google".
 
 ### Privacy note screen
-A new `privacy` screen opens from a "🔒 Privacy" link next to "Reset progress"
+A `privacy` screen opens from a "🔒 Privacy" link next to "Reset progress"
 on the title, and from the account card. It uses short, plain sentences for
-grown-ups:
-- **Guests:** stored is a random player ID, the game progress and the snow
+grown-ups, from `PRIVACY_FACTS` in `src/ui/privacy-text.js`:
+- **Guests:** we keep a random player ID, the game progress and the snow
   name. No name, email or location.
-- **Google sign-in:** Google Firebase also keeps the account's email, name and
-  photo, so progress can follow you. Only grown-ups should do this.
+- **Google sign-in:** Google Firebase also keeps the account's email address,
+  name and profile photo, so progress can follow you. Only grown-ups should
+  do this.
 - **Leaderboard:** shows only snow names made from our word lists, and scores.
 - **Feedback:** if you send some, we keep the stars, topic, quick notes, any
   grown-up's note, the map number, device type (touch or keyboard), app
   version and the player ID, to improve the game. Only the game's maker reads
   it; other players never see it. (Feedback is one-way, so "no chat" stays true.)
-- **Never:** no ads, no analytics, no tracking, no chat.
-- **Where:** Google Cloud (Firebase).
-- **How long:** until you delete it, or until saves unused for 2 years are
-  cleared.
+- **Never:** no ads, no analytics tools, no tracking, no chat, no location.
+  ("Tools": feedback is read to fix bugs, which Play's Data safety form
+  counts as the purpose "Analytics".)
+- **Where:** Google Cloud (Firebase), which stores it for us. We never sell it
+  or share it with anyone else.
+- **Safety:** it travels encrypted, Google stores it encrypted, and each
+  player can only reach their own save.
+- **How long:** until you delete it. The game's maker may also clear away, by
+  hand, saves, leaderboard entries and sign-ins that haven't been used for 2
+  years.
+  (Nothing clears them by itself: Firestore's TTL policies need the paid
+  plan. The owner does it in the console, from time to time.)
 - **iPhone and iPad:** Safari may clear a guest's progress after about a week
   of not playing; sign in with Google to keep it.
 - **To delete:** the "Delete my saved data" button (it deletes any feedback
-  you sent too), or contact `PRIVACY_CONTACT`.
+  you sent and a Google sign-in too), or contact `PRIVACY_CONTACT`.
+
+Under the list, "📄 Read the full privacy policy" opens `privacy.html` in a
+new tab (only with a cloud: the policy describes the game with one).
 
 `PRIVACY_CONTACT` is a constant in `src/cloud/config.js`: an email address
 (shown as a mailto: link) or a web page. It is currently the owner's email,
 which they plan to change later.
+
+### Public privacy pages (Google Play)
+`public/privacy.html` ("Privacy policy") and `public/delete-data.html`
+("Delete your data") are plain, stand-alone pages next to `index.html`, so
+they are served at `…/Pip-s-Christmas-Eve-Hunt/privacy.html` and
+`…/delete-data.html`. Play Console links to both (the privacy policy, and
+the account deletion page). They have no script, use the game's palette and
+its own Fredoka files (`vite.config.js` puts those in `fonts/` under fixed
+names; a system font stands in if they are missing, as on `npm run dev`), and
+read well at 375 px.
+- **privacy.html:** who makes the game and the contact, an "In short" box
+  with the privacy screen's list word for word, then each kind of data with
+  why and whether it is optional (matching the Play Data safety form), what
+  stays on the device, where it is kept and who can see it, sharing (none;
+  Google is a service provider), security, children, how long, deleting,
+  rights and changes. It names Firebase Authentication's handling of IP
+  addresses and user agents for security, GitHub Pages seeing IP addresses
+  as the web host, and Google's own sign-in window, and says the game never
+  works out a location.
+- **delete-data.html:** the in-game steps (including "Confirm with Google"),
+  how to ask by email without opening or reinstalling the game (from the
+  Google address; a guest's save can't be found from an email), what is
+  deleted, what Google keeps for a while and why (including the guest ID
+  Firebase may keep, see above), and the time frames (straight away in the
+  game, 30 days by email).
+- `DELETE_FACTS` in `src/ui/privacy-text.js` holds the sentences both pages
+  share. `test/privacy-pages.test.js` checks that the pages still say every
+  `PRIVACY_FACTS` and `DELETE_FACTS` sentence word for word, carry the same
+  "Last updated" date (`POLICY_UPDATED`) and `PRIVACY_CONTACT`, link to each
+  other and have no script. **Change the wording in all three places
+  together**, and the date with it.
+- The service worker precaches both pages (they are `.html` in the build), so
+  they open offline, and the navigation fallback never answers them with the
+  game: plain URLs come from the precache, and a URL with a query string
+  (which the precache doesn't match) goes to the network.
 
 ### Storage
 main.js calls `navigator.storage.persist()` once (best-effort) so browsers are

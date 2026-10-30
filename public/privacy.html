@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Privacy policy – Pip's Christmas Eve Hunt</title>
+    <meta name="description" content="The privacy policy of Pip's Christmas Eve Hunt: what the game keeps, why, where, for how long, and how to delete it." />
+    <meta name="theme-color" content="#1b2450" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <!-- Stand-alone on purpose (Google Play links here): no script, and the
+         facts say what src/ui/privacy-text.js and the in-game Privacy screen
+         say, word for word (test/privacy-pages.test.js checks). The fonts are
+         the game's own Fredoka files (vite.config.js keeps their names). -->
+    <style>
+      @font-face {
+        font-family: 'Fredoka';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('fonts/fredoka-latin-400-normal.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Fredoka';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url('fonts/fredoka-latin-600-normal.woff2') format('woff2');
+      }
+
+      /* the game's palette (src/styles.css, src/ui/screens.css) */
+      :root {
+        --night: #1b2450;
+        --night-deep: #0f1533;
+        --paper: #fff8ec;
+        --ink: #2a1b3d;
+        --ink-soft: #5b4a72;
+        --red: #e63946;
+        --green-dark: #1d7652;
+        --gold: #ffc94a;
+        --mint: #dff5ea;
+        --blush: #ffe3ec;
+        --butter: #fff1c4;
+        --sky: #dcefff;
+        --link: #2459b3;
+        --font: 'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--night-deep);
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        background: radial-gradient(120% 70% at 50% 0%, #30408c 0%, var(--night) 45%, var(--night-deep) 100%) fixed var(--night-deep);
+        color: var(--ink);
+        font: 400 1.0625rem/1.55 var(--font);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        overflow: hidden;
+        border: 3px solid var(--ink);
+        border-radius: 22px;
+        background: var(--paper);
+        box-shadow: 0 6px 0 rgba(42, 27, 61, 0.35), 0 12px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      /* candy-stripe ribbon along the top */
+      .page::before {
+        content: '';
+        display: block;
+        height: 12px;
+        border-bottom: 3px solid var(--ink);
+        background: repeating-linear-gradient(45deg, var(--red) 0 10px, #fff 10px 20px);
+      }
+
+      header {
+        padding: 22px 28px 6px;
+        text-align: center;
+      }
+
+      .app {
+        margin: 0;
+        color: var(--ink-soft);
+        font-weight: 600;
+      }
+
+      h1 {
+        margin: 2px 0 4px;
+        font-size: clamp(1.9rem, 7vw, 2.5rem);
+        font-weight: 600;
+        line-height: 1.15;
+      }
+
+      .updated {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.95rem;
+      }
+
+      main {
+        padding: 6px 28px 26px;
+      }
+
+      h2 {
+        margin: 30px 0 8px;
+        font-size: 1.3rem;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+
+      h3 {
+        margin: 18px 0 4px;
+        font-size: 1.08rem;
+        font-weight: 600;
+      }
+
+      p,
+      ul,
+      ol {
+        margin: 0 0 12px;
+      }
+
+      ul,
+      ol {
+        padding-left: 1.3em;
+      }
+
+      li {
+        margin-bottom: 6px;
+      }
+
+      b,
+      strong {
+        font-weight: 600;
+      }
+
+      a {
+        color: var(--link);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        overflow-wrap: anywhere;
+      }
+
+      a:hover {
+        color: var(--ink);
+      }
+
+      a:focus-visible {
+        outline: 3px solid var(--gold);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      /* "In short": the same list as the in-game Privacy screen */
+      .short {
+        margin: 18px 0 8px;
+        padding: 16px 16px 6px;
+        border: 3px solid var(--ink);
+        border-radius: 6px 18px 6px 18px;
+        background: var(--sky);
+        box-shadow: 0 4px 0 var(--ink);
+      }
+
+      .short h2 {
+        margin-top: 0;
+      }
+
+      .facts {
+        margin: 0 0 10px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .facts li {
+        display: flex;
+        gap: 10px;
+        margin: 0 0 8px;
+        padding: 8px 12px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: #fff;
+      }
+
+      .facts li span {
+        flex: none;
+        width: 1.5em;
+        text-align: center;
+      }
+
+      .facts p {
+        min-width: 0;
+        margin: 0;
+      }
+
+      /* what is collected: one card per kind of data */
+      .data {
+        margin: 0 0 12px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .data li {
+        margin: 0 0 10px;
+        padding: 10px 14px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: #fff;
+      }
+
+      .data li:nth-child(even) {
+        background: #fffaf0;
+      }
+
+      .data h3 {
+        margin: 0 0 2px;
+      }
+
+      .data p {
+        margin: 0 0 4px;
+      }
+
+      .data p:last-child {
+        margin-bottom: 0;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-left: 4px;
+        padding: 0 8px;
+        border: 2px solid var(--ink);
+        border-radius: 999px;
+        background: var(--mint);
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1.5;
+        vertical-align: 2px;
+        white-space: nowrap;
+      }
+
+      .tag.optional {
+        background: var(--butter);
+      }
+
+      .note {
+        padding: 10px 14px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: var(--blush);
+      }
+
+      footer {
+        padding: 16px 28px 22px;
+        border-top: 3px dashed rgba(42, 27, 61, 0.2);
+        text-align: center;
+      }
+
+      footer p {
+        margin: 0 0 6px;
+      }
+
+      @media (max-width: 480px) {
+        body {
+          padding-top: 12px;
+          font-size: 1rem;
+        }
+
+        header,
+        main,
+        footer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .short {
+          padding: 12px 10px 4px;
+        }
+
+        .facts li {
+          gap: 8px;
+          padding: 8px 10px;
+        }
+      }
+
+      @media print {
+        body {
+          padding: 0;
+          background: none;
+        }
+
+        .page {
+          border: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <p class="app"><span aria-hidden="true">🐧🎁 </span>Pip's Christmas Eve Hunt</p>
+        <h1>Privacy policy</h1>
+        <p class="updated">Last updated: 30 October 2026</p>
+      </header>
+
+      <main>
+        <p>
+          Pip's Christmas Eve Hunt is a free 3D Christmas game for children and families. You can play it on the web at
+          <a href="https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/">godwin20.github.io/Pip-s-Christmas-Eve-Hunt</a> and as an Android app on Google
+          Play. It is made by one independent developer: the developer named on the game's Google Play page, called "we" or "the game's maker"
+          here. This policy covers both.
+        </p>
+        <p>
+          Questions, or want to see or delete your data? Email <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>.
+        </p>
+
+        <section class="short" aria-labelledby="short">
+          <h2 id="short">In short</h2>
+          <!-- word for word the list on the game's own Privacy screen -->
+          <ul class="facts">
+            <li><span aria-hidden="true">🐧</span><p><b>Guests:</b> we keep a random player ID, the game progress and the snow name. No name, email or location.</p></li>
+            <li><span aria-hidden="true">🔑</span><p><b>Google sign-in:</b> Google Firebase also keeps the account's email address, name and profile photo, so progress can follow you. Only grown-ups should do this.</p></li>
+            <li><span aria-hidden="true">🏆</span><p><b>Leaderboard:</b> shows only snow names made from our word lists, and scores.</p></li>
+            <li><span aria-hidden="true">⭐</span><p><b>Feedback:</b> if you send some, we keep the stars, topic, quick notes, any grown-up's note, the map number, device type (touch or keyboard), app version and the player ID, to improve the game. Only the game's maker reads it; other players never see it.</p></li>
+            <li><span aria-hidden="true">🚫</span><p><b>Never:</b> no ads, no analytics tools, no tracking, no chat, no location.</p></li>
+            <li><span aria-hidden="true">☁️</span><p><b>Where:</b> Google Cloud (Firebase), which stores it for us. We never sell it or share it with anyone else.</p></li>
+            <li><span aria-hidden="true">🔒</span><p><b>Safety:</b> it travels encrypted, Google stores it encrypted, and each player can only reach their own save.</p></li>
+            <li><span aria-hidden="true">⏳</span><p><b>How long:</b> until you delete it. The game's maker may also clear away, by hand, saves, leaderboard entries and sign-ins that haven't been used for 2 years.</p></li>
+            <li><span aria-hidden="true">📱</span><p><b>iPhone and iPad:</b> Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.</p></li>
+            <li><span aria-hidden="true">🗑️</span><p><b>To delete:</b> use the "Delete my saved data" button on the game's Privacy screen, or email <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>. See <a href="delete-data.html">Delete your data</a>.</p></li>
+          </ul>
+        </section>
+
+        <h2 id="collect">What we collect, and why</h2>
+        <p>Every player is signed in to the game's cloud, at first as a guest without any personal details. This is all the game sends there:</p>
+        <ul class="data">
+          <li>
+            <h3>A random player ID <span class="tag">always</span></h3>
+            <p>
+              Made by Firebase Authentication the first time the game opens. It is how the cloud save and the leaderboard entry know whose they are, and how
+              the game's security rules keep each player to their own save and stop too much feedback at once. It says nothing about who you are.
+            </p>
+          </li>
+          <li>
+            <h3>Game progress and scores <span class="tag">always</span></h3>
+            <p>
+              Presents and crackers found, nights played, the best night, coins, upgrades, jokes found, rewards unlocked and wardrobe choices, plus the snow name
+              (made from our word lists, like "Jolly Penguin 42") and whether it shows on the leaderboard. This is so your game is saved, can carry on on another
+              device, and can appear on the leaderboard.
+            </p>
+          </li>
+          <li>
+            <h3>Email address, name and profile photo <span class="tag optional">only with Google sign-in</span></h3>
+            <p>
+              Only if a grown-up chooses "Sign in with Google". Google shares them with Firebase Authentication when you sign in, so progress can follow the
+              Google account to other devices. The game itself shows only the first name ("Signed in as …"), on that device. It never puts them on the
+              leaderboard.
+            </p>
+          </li>
+          <li>
+            <h3>Feedback <span class="tag optional">only if you send some</span></h3>
+            <p>The star rating, the topic, up to three quick notes (like "Loved it!") and the map number of the last night, with the player ID. This helps us improve the game.</p>
+          </li>
+          <li>
+            <h3>A grown-up's note <span class="tag optional">only if one is written</span></h3>
+            <p>
+              Free text of up to 300 characters, sent with feedback. Only a grown-up can open the box (it sits behind a grown-ups question), and it asks not to
+              include names, addresses or contact details. Only the game's maker reads it.
+            </p>
+          </li>
+          <li>
+            <h3>Device type and app version <span class="tag optional">only with feedback</span></h3>
+            <p>Whether the device is a touch screen or a keyboard and mouse, and the game's version number, so we can find and fix bugs.</p>
+          </li>
+        </ul>
+        <p>
+          To keep sign-in secure and stop abuse, Google's Firebase Authentication also handles the device's IP address and browser details (the "user agent").
+          The game's files come from GitHub Pages, which, like any web host, sees the IP address when it sends them. Signing in with Google happens in
+          Google's own window, under Google's privacy policy. We don't use any of this, and the game never asks for or works out where you are.
+        </p>
+        <p>
+          The game doesn't collect contacts, photos, files, the microphone or camera, payment details or an advertising ID, and it contains no advertising,
+          analytics or crash-reporting tools.
+        </p>
+
+        <h2 id="device">What stays on your device</h2>
+        <p>
+          The browser keeps the saved game and sound settings, the sign-in (so you stay signed in), a few small notes the game needs (for example that a
+          grown-up answered the grown-ups question in the last 10 minutes), and a copy of the game's own files so it plays offline. They stay on the device. The
+          Android app opens the same game in Chrome, so it shares Chrome's saved data for the game on that phone.
+        </p>
+        <p>
+          Clearing the browser's data for the game removes all of this from the device, but not the copy in the cloud: use "Delete my saved data" first. A
+          guest's cloud save holds no name or contact details, and after that the game can no longer reach it.
+        </p>
+
+        <h2 id="where">Where it is kept, and who can see it</h2>
+        <p>
+          In Google Firebase (Firebase Authentication and Cloud Firestore), part of Google Cloud. Google may store and process it in the United States or other
+          countries where it has data centres.
+        </p>
+        <ul>
+          <li><b>Other players</b> see only the leaderboard: snow names and scores. Never a real name, email or photo.</li>
+          <li><b>Your own device</b> can read and change only your own save. No player can read anyone's feedback.</li>
+          <li><b>The game's maker</b> can see the stored data in the Firebase console, to run and fix the game and to read feedback.</li>
+          <li><b>Google</b> stores and processes it for us, as our service provider.</li>
+        </ul>
+
+        <h2 id="sharing">Sharing</h2>
+        <p>
+          We don't sell, rent or share your data, and nobody uses it for advertising. Google acts only as our service provider under the Firebase terms. We
+          would pass data on only if the law required it.
+        </p>
+
+        <h2 id="security">Security</h2>
+        <p>
+          Everything travels over encrypted connections (HTTPS), and Google encrypts the data where it is stored. The game's Firebase security rules let each
+          player read and change only their own save, check that everything written has the right shape, and stop anyone reading another player's feedback.
+          Only the game's maker can open the Firebase project.
+        </p>
+
+        <h2 id="children">Children</h2>
+        <p>
+          The game is made for everyone, children included, and children can play as guests without giving any personal details. There are no ads, no
+          analytics tools, no tracking, no chat and no location. The leaderboard shows only snow names built from our word lists, so nobody can type a real name
+          there.
+        </p>
+        <p>
+          Signing in with Google is optional and meant for parents and carers: every "Sign in with Google" button first asks a grown-ups question (a
+          multiplication sum). Typing a feedback note sits behind the same question. If you think a child has sent us personal information, in a note for
+          example, email us and we'll delete it.
+        </p>
+
+        <h2 id="retention">How long we keep it</h2>
+        <p>
+          <b>How long:</b> until you delete it. The game's maker may also clear away, by hand, saves, leaderboard entries and sign-ins that haven't been
+          used for 2 years. Feedback is kept until you delete your saved data, or until the game's maker deletes it.
+        </p>
+
+        <h2 id="delete">Deleting your data</h2>
+        <p>
+          In the game: on the title screen, tap <b>Privacy</b>, then <b>Delete my saved data</b> and <b>Yes, delete it</b>. If you signed in with Google, the
+          game may ask you to confirm with Google once more ("Confirm with Google to finish deleting"). Or email
+          <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>, without opening or reinstalling the game. The steps are on
+          <a href="delete-data.html">Delete your data</a>.
+        </p>
+        <p>Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name and profile photo.</p>
+        <p>A guest's sign-in holds only the random player ID. Firebase may keep that ID, but nothing is stored under it any more.</p>
+        <p>Your Google account itself stays as it is: only its link to this game goes.</p>
+        <p>Google keeps its own security logs, which include IP addresses, for a few weeks, and deleted data leaves Google's backups within about 180 days.</p>
+        <p>In the game it happens straight away. If you email us, we delete it within 30 days and tell you when it's done.</p>
+
+        <h2 id="rights">Your rights</h2>
+        <p>
+          Wherever you live, you can ask us what we hold about you, and ask us to correct it or delete it, by emailing
+          <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>. If you are in the UK or the European Union, you can also complain to your data
+          protection authority.
+        </p>
+
+        <h2 id="changes">Changes to this policy</h2>
+        <p>If this policy changes, we will update this page and the "Last updated" date at the top.</p>
+      </main>
+
+      <footer>
+        <p><a href="delete-data.html">Delete your data</a> · <a href="./">Play Pip's Christmas Eve Hunt</a></p>
+        <p>Contact: <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a></p>
+      </footer>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,322 @@
+<!doctype html>
+<!--
+  Google Play feature graphic (1024 x 500), drawn with the game's own menu art:
+  the Pip, tree, present, cracker and puppy doodles are the markup of pipHTML() /
+  sceneHTML() in src/ui/screens.js, styled by src/ui/screens.css, and the title
+  is the title screen's logo(). Served from the repo root (e.g. `npx vite`, then
+  /play/store/feature-graphic.html) and captured at exactly 1024 x 500; the page
+  is opaque, so the PNG needs no alpha channel (see listing.md for the steps).
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Pip's Hunt feature graphic</title>
+    <link rel="stylesheet" href="../../node_modules/@fontsource/fredoka/latin-500.css" />
+    <link rel="stylesheet" href="../../node_modules/@fontsource/fredoka/latin-600.css" />
+    <link rel="stylesheet" href="../../node_modules/@fontsource/fredoka/latin-700.css" />
+    <link rel="stylesheet" href="../../src/styles.css" />
+    <link rel="stylesheet" href="../../src/ui/screens.css" />
+    <style>
+      html,
+      body {
+        width: 1024px;
+        height: 500px;
+        overflow: hidden;
+        /* opaque all the way: the store wants no transparency */
+        background: var(--night-deep);
+      }
+
+      .fg {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        /* the menus' night sky, a little brighter towards the horizon */
+        background:
+          radial-gradient(60% 70% at 30% 78%, rgba(255, 214, 120, 0.22) 0%, rgba(255, 214, 120, 0) 70%),
+          linear-gradient(180deg, #0f1533 0%, #1b2450 46%, #34408a 78%, #4a55a8 100%);
+      }
+
+      /* northern lights: soft blurred ribbons, like the 3D sky */
+      .fg-aurora {
+        position: absolute;
+        left: -10%;
+        right: -10%;
+        height: 150px;
+        border-radius: 50%;
+        filter: blur(28px);
+        opacity: 0.55;
+      }
+
+      .fg-aurora--a {
+        top: 18px;
+        background: linear-gradient(90deg, rgba(80, 230, 170, 0) 0%, #50e6aa 30%, #3ccfd8 55%, rgba(120, 140, 255, 0) 90%);
+        rotate: -6deg;
+      }
+
+      .fg-aurora--b {
+        top: 70px;
+        height: 90px;
+        opacity: 0.35;
+        background: linear-gradient(90deg, rgba(199, 125, 255, 0) 10%, #c77dff 45%, #5ce1e6 70%, rgba(92, 225, 230, 0) 100%);
+        rotate: 4deg;
+      }
+
+      /* stars */
+      .fg-stars {
+        position: absolute;
+        inset: 0 0 35% 0;
+        background-image:
+          radial-gradient(circle at 6% 14%, #fff 0 1.4px, transparent 2px),
+          radial-gradient(circle at 15% 40%, #fff 0 1px, transparent 1.6px),
+          radial-gradient(circle at 24% 8%, #fff 0 1.2px, transparent 1.8px),
+          radial-gradient(circle at 33% 30%, #fff 0 0.9px, transparent 1.5px),
+          radial-gradient(circle at 46% 12%, #fff 0 1.3px, transparent 1.9px),
+          radial-gradient(circle at 52% 44%, #fff 0 1px, transparent 1.6px),
+          radial-gradient(circle at 63% 6%, #fff 0 1.1px, transparent 1.7px),
+          radial-gradient(circle at 71% 52%, #fff 0 0.9px, transparent 1.5px),
+          radial-gradient(circle at 79% 20%, #fff 0 1.4px, transparent 2px),
+          radial-gradient(circle at 88% 9%, #fff 0 1px, transparent 1.6px),
+          radial-gradient(circle at 95% 36%, #fff 0 1.2px, transparent 1.8px),
+          radial-gradient(circle at 40% 58%, #fff 0 0.8px, transparent 1.4px);
+        opacity: 0.85;
+      }
+
+      .fg-twinkle {
+        position: absolute;
+        color: #fff;
+        font-style: normal;
+        line-height: 1;
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.9);
+      }
+
+      .fg-moon {
+        position: absolute;
+        top: 40px;
+        left: 236px;
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 38% 36%, #fffdf0 0%, #fff3c4 60%, #ffe39a 100%);
+        box-shadow:
+          0 0 30px rgba(255, 240, 190, 0.75),
+          0 0 80px rgba(255, 240, 190, 0.35);
+      }
+
+      /* snowy hills and a far-off forest */
+      .fg-hill {
+        position: absolute;
+        border-radius: 50%;
+      }
+
+      .fg-hill--back {
+        left: -12%;
+        right: 30%;
+        bottom: -230px;
+        height: 380px;
+        background: linear-gradient(#c9d8f4, #9fb3e2);
+        opacity: 0.9;
+      }
+
+      .fg-hill--back2 {
+        left: 45%;
+        right: -15%;
+        bottom: -250px;
+        height: 380px;
+        background: linear-gradient(#c3d2f2, #97abdc);
+        opacity: 0.9;
+      }
+
+      .fg-hill--front {
+        left: -20%;
+        right: -20%;
+        bottom: -330px;
+        height: 420px;
+        background: linear-gradient(#f4f8ff, #d7e5fa 55%, #bccfee);
+        box-shadow: inset 0 10px 0 rgba(255, 255, 255, 0.7);
+      }
+
+      .fg-forest {
+        position: absolute;
+        bottom: 118px;
+      }
+
+      .fg-forest .scr-tree {
+        position: absolute;
+        bottom: 0;
+      }
+
+      .fg-forest--far .scr-tree {
+        filter: brightness(0.62) saturate(0.7) drop-shadow(0.12em 0 0 #2a1b3d) drop-shadow(-0.12em 0 0 #2a1b3d)
+          drop-shadow(0 0.12em 0 #2a1b3d) drop-shadow(0 -0.12em 0 #2a1b3d);
+      }
+
+      .fg-forest--far .scr-tree__star {
+        display: none;
+      }
+
+      /* the title screen scene, scaled up */
+      .fg-scene {
+        position: absolute;
+        left: 22px;
+        bottom: 24px;
+        width: 380px;
+        height: 210px;
+        transform: scale(1.52);
+        transform-origin: 0 100%;
+      }
+
+      .fg-scene .scr-scene {
+        margin: 0;
+      }
+
+      /* Pip is the star here: a bit bigger than on the title screen */
+      .fg-scene .scr-scene__pip {
+        font-size: 19px;
+        margin-left: -70px;
+        bottom: 26px;
+      }
+
+      .fg-scene .scr-scene__pup {
+        margin-left: 54px;
+        font-size: 10px;
+      }
+
+      .fg-scene .scr-scene__tree {
+        left: 2%;
+      }
+
+      .fg-scene .scr-scene__cracker {
+        left: 6%;
+      }
+
+      .fg-title {
+        position: absolute;
+        top: 44%;
+        right: 30px;
+        width: 480px;
+        translate: 0 -50%;
+      }
+
+      .fg-title .scr-logo__ribbon {
+        font-size: 40px;
+        margin-bottom: 14px;
+      }
+
+      .fg-title .scr-logo__main {
+        font-size: 82px;
+        row-gap: 0.02em;
+        padding-bottom: 0;
+      }
+
+      .fg-title .scr-logo-sparkles i {
+        font-size: 26px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scr fg" aria-hidden="true">
+      <div class="fg-aurora fg-aurora--a"></div>
+      <div class="fg-aurora fg-aurora--b"></div>
+      <div class="fg-stars"></div>
+      <div class="fg-moon"></div>
+      <i class="fg-twinkle" style="left: 40%; top: 30px; font-size: 22px; color: var(--gold)">✦</i>
+      <i class="fg-twinkle" style="left: 7%; top: 70px; font-size: 16px">✧</i>
+      <i class="fg-twinkle" style="right: 5%; top: 24px; font-size: 18px">❄</i>
+      <i class="fg-twinkle" style="right: 4%; bottom: 120px; font-size: 20px; color: var(--gold)">★</i>
+
+      <div class="fg-hill fg-hill--back"></div>
+      <div class="fg-hill fg-hill--back2"></div>
+
+      <div class="fg-forest fg-forest--far" style="left: 0; right: 0">
+        <div class="scr-tree" style="left: 8px; font-size: 7px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="left: 52px; font-size: 9px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="left: 330px; font-size: 6px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="left: 372px; font-size: 8px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="right: 70px; font-size: 7px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="right: 18px; font-size: 9.5px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+      </div>
+
+      <div class="fg-hill fg-hill--front"></div>
+
+      <!-- sceneHTML(save) with the scarf, crown, wave and the snow puppy -->
+      <div class="fg-scene">
+        <div class="scr-scene has-puppy">
+          <div class="scr-scene__glow"></div>
+          <div class="scr-scene__aurora"></div>
+          <div class="scr-tree scr-scene__tree">
+            <span class="scr-tree__trunk"></span>
+            <i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i>
+            <b class="scr-tree__star">★</b>
+          </div>
+          <div class="scr-scene__mound"></div>
+          <div class="scr-scene__trail"><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="scr-scene__pip">
+            <div class="scr-pip has-scarf has-crown is-waving">
+              <div class="scr-pip__shadow"></div>
+              <div class="scr-pip__foot scr-pip__foot--l"></div>
+              <div class="scr-pip__foot scr-pip__foot--r"></div>
+              <div class="scr-pip__wrap">
+                <div class="scr-pip__flip scr-pip__flip--l"></div>
+                <div class="scr-pip__flip scr-pip__flip--r"></div>
+                <div class="scr-pip__body">
+                  <div class="scr-pip__belly"></div>
+                  <div class="scr-pip__face"></div>
+                  <div class="scr-pip__jumper"><i>★</i></div>
+                  <div class="scr-pip__eye scr-pip__eye--l"></div>
+                  <div class="scr-pip__eye scr-pip__eye--r"></div>
+                  <div class="scr-pip__cheek scr-pip__cheek--l"></div>
+                  <div class="scr-pip__cheek scr-pip__cheek--r"></div>
+                  <div class="scr-pip__beak"></div>
+                </div>
+                <div class="scr-pip__scarf"><i></i></div>
+                <div class="scr-pip__hat"></div>
+                <div class="scr-pip__crown"></div>
+              </div>
+            </div>
+          </div>
+          <div class="scr-scene__pup">
+            <div class="scr-pup">
+              <div class="scr-pup__tail"></div>
+              <div class="scr-pup__body"><i></i><i></i></div>
+              <div class="scr-pup__collar"><b></b></div>
+              <div class="scr-pup__head">
+                <i class="scr-pup__ear scr-pup__ear--l"></i><i class="scr-pup__ear scr-pup__ear--r"></i>
+                <div class="scr-pup__face">
+                  <i class="scr-pup__eye scr-pup__eye--l"></i><i class="scr-pup__eye scr-pup__eye--r"></i>
+                  <i class="scr-pup__nose"></i><i class="scr-pup__tongue"></i>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="scr-scene__gift">
+            <div class="scr-gift">
+              <div class="scr-gift__box"></div>
+              <div class="scr-gift__lid"></div>
+              <div class="scr-gift__bow"><i></i><i></i><b></b></div>
+            </div>
+          </div>
+          <div class="scr-scene__cracker">
+            <div class="scr-cracker"><i class="scr-cracker__l"></i><i class="scr-cracker__r"></i><b></b></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- logo() from the title screen -->
+      <div class="fg-title scr-title__logo">
+        <div class="scr-logo-sparkles">
+          <i style="--i: 0">✦</i><i style="--i: 1">✧</i><i style="--i: 2">❄</i><i style="--i: 3">✦</i><i style="--i: 4">★</i><i style="--i: 5">❄</i>
+        </div>
+        <h1 class="scr-logo" aria-label="Pip's Christmas Eve Hunt">
+          <span class="scr-logo__ribbon"><span>Pip's</span></span>
+          <span class="scr-logo__main">
+            <span class="scr-logo__word"><span class="scr-logo__l" style="--i: 0">C</span><span class="scr-logo__l" style="--i: 1">h</span><span class="scr-logo__l" style="--i: 2">r</span><span class="scr-logo__l" style="--i: 3">i</span><span class="scr-logo__l" style="--i: 4">s</span><span class="scr-logo__l" style="--i: 5">t</span><span class="scr-logo__l" style="--i: 6">m</span><span class="scr-logo__l" style="--i: 7">a</span><span class="scr-logo__l" style="--i: 8">s</span></span>
+            <span class="scr-logo__sp"> </span>
+            <span class="scr-logo__word"><span class="scr-logo__l" style="--i: 10">E</span><span class="scr-logo__l" style="--i: 11">v</span><span class="scr-logo__l" style="--i: 12">e</span></span>
+            <span class="scr-logo__sp"> </span>
+            <span class="scr-logo__word scr-logo__hunt"><span class="scr-logo__l" style="--i: 14">H</span><span class="scr-logo__l" style="--i: 15">u</span><span class="scr-logo__l" style="--i: 16">n</span><span class="scr-logo__l" style="--i: 17">t</span><span class="scr-logo__l" style="--i: 18">!</span></span>
+          </span>
+        </h1>
+      </div>
+    </div>
+  </body>
+</html>

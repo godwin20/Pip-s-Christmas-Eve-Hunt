@@ -44,7 +44,8 @@ Kid-friendly humour everywhere.
 - `src/game/crackers.js` — `RARITY_COINS`, `rollRarity(rng, jokeLuck)`, `pickJoke(rng, rarity, foundIds)` → `{joke, isNew}`, `getJoke(id)`.
 - `src/world/materials.js`, `src/styles.css` (CSS variables — use them), `index.html`.
 
-DOM roots in `index.html`: `#game` (canvas), `#hud`, `#popups`, `#screens`. The
+DOM roots in `index.html`: `#game` (canvas), `#hud`, `#popups`, `#screens`
+(all inside `#app`). The
 three overlay roots are `pointer-events:none` but their **direct children** get
 `pointer-events:auto` — so HUD/overlay containers that cover the screen must set
 `pointer-events:none` themselves and re-enable it only on real buttons, or they will
@@ -240,14 +241,38 @@ Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins t
 - Surprise banner: big icon + name + detail sliding in from top, auto-hides.
 - Unlock: celebratory card with icon, name, desc, confetti CSS.
 
+### `src/ui/glnote.js` (+ `src/ui/glnote.css`): when the 3D can't run
+`export function showGlNote(kind /* 'nogl' | 'lost' */, { root, onButton })` → `{ hide() }`
+- A cosy full-screen paper card over everything in `root` (main.js passes
+  `#app`), whose other children go `inert` until `hide()`. Its one button
+  reloads the page unless `onButton` is given. Never throws.
+- `'nogl'`: "Pip's island needs 3D graphics" / "Try Chrome, Safari or Edge, or
+  turn on hardware acceleration in your browser settings." (Try again).
+- `'lost'`: "The 3D picture took a snow day" (Tap to reload).
+- main.js creates the renderer in a try/catch. With no WebGL it shows
+  `'nogl'` and stops there with a top-level `await` on a promise that never
+  settles: no error, and nothing else starts (no world, menus, cloud sign-in
+  or service worker).
+- On `webglcontextlost` main.js calls `preventDefault()` (so the browser may
+  give the context back), pauses a running night and shows `'lost'`; the
+  frame loop neither updates nor draws meanwhile. On
+  `webglcontextrestored` the note goes and the game carries on from the
+  pause menu (three.js rebuilds its GPU state itself).
+
 ### `src/core/pwa.js` (installable app, offline play, updates)
 The web app manifest, icons (`public/icons/`) and the Workbox service worker are
 set up in `vite.config.js` (vite-plugin-pwa, `registerType: 'prompt'`). The
 service worker precaches every built file (the game, the lazy Firebase chunk,
-the Fredoka woff2 files, the icons) and has **no** runtime caching, so Firebase
-and Google requests always go to the network. Paths stay relative (`base: './'`):
+the Fredoka woff2 files, the icons, and the public privacy pages
+`privacy.html` / `delete-data.html`) and has **no** runtime caching, so Firebase
+and Google requests always go to the network. Its navigation fallback (the
+game's `index.html` for any other address) never answers `/__/` or the
+privacy pages: those come from the precache, or from the network when a query
+string keeps the precache from matching. Paths stay relative (`base: './'`):
 `sw.js`, its scope and the manifest's `start_url` / `scope` all resolve to the
-folder the game is served from (the GitHub Pages sub-path).
+folder the game is served from (the GitHub Pages sub-path). The Fredoka files
+are built into `fonts/` under fixed names (no hash), so the stand-alone
+privacy pages can use them too.
 
 Pure helpers (no side effects on import, so screens.js imports them too):
 `isInAppBrowser(ua?)`, `isIOS(ua?, maxTouchPoints?)` (iPadOS's desktop user agent
@@ -303,6 +328,14 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
 `summary = { seed, crackers, presents, coinsEarned, newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
 - **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step, and (with a cloud) "⭐ Feedback" on the same bottom line.
 - **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
+- **Privacy** (docs/CLOUD.md, "Privacy note screen"): the plain-words list
+  from `PRIVACY_FACTS` in `src/ui/privacy-text.js` (which `public/privacy.html`
+  repeats word for word), "📄 Read the full privacy policy" (`privacy.html`,
+  new tab, only with a cloud) and "Delete my saved data". While the cloud's
+  `status.needsReauth` is true, the delete box and the leaderboard's account
+  card show "Confirm with Google to finish deleting" (`cloud.reauthAndDelete()`,
+  called inside the click), and the title's sign-in strip offers "Finish
+  deleting".
 - **Feedback card** (docs/CLOUD.md, "Feedback"): an in-page card over the title or results, never during a night: 1–5 stars, one topic, up to 3 quick-note chips, and a note only behind the grown-ups question. It calls `cloud.sendFeedback(payload)` with `{ rating, category, quick, comment, islandSeed }`; a success shows a thank-you toast, and the Feedback links say "Thanks! You can send more after your next night" until a night ends. The lists are `FEEDBACK_CATEGORIES` and `FEEDBACK_QUICK` in `src/cloud/feedback.js`.
 - **Shop (Santa's Workshop)**: tabs **Upgrades**, **Rewards**, **Wardrobe**. Coins shown. Upgrade cards: icon, name, blurb, level pips (●●○), next level text, Buy button with cost (disabled if poor/maxed; `buyUpgrade` from upgrades.js, then `persist()`, `sfx.play('buy')` or `'error'`). Rewards tab: present milestone track — progress bar of `save.totalPresents` with milestone stops (icon, count, name, locked/unlocked). Wardrobe: toggles for unlocked cosmetic milestones (`save.wardrobe[id]`). Buttons: Start Night, Gallery, Title.
 - **Gallery**: scrapbook page; filter chips All / Jokes / Quotes / Secrets(Legendary); counter "42 / 102 found"; grid of cards — found cards show the `q` and flip on click to show `a` (with 🔊 read aloud); unfound show "???" silhouette with a cracker outline and rarity tint. Back button.

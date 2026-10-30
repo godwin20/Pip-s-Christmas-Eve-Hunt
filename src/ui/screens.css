@@ -2276,6 +2276,14 @@
   padding: 8px 16px;
 }
 
+/* a delete waiting for Google: "Finish deleting" opens the Privacy screen */
+.scr-titleauth[data-view='pending'] {
+  padding: 8px 16px;
+  background:
+    radial-gradient(rgba(91, 74, 114, 0.1) 1.2px, transparent 1.7px) 0 0 / 16px 16px,
+    var(--butter);
+}
+
 .scr-titleauth__line {
   flex: 1 1 150px;
   max-width: 230px;
@@ -5017,6 +5025,65 @@ p .scr-key {
 .scr-privacy__delbody > .scr-privacy__note[data-tone='error'] {
   background: var(--blush);
   color: var(--red-dark);
+}
+
+/* "Read the full privacy policy" (public/privacy.html, a new tab) */
+.scr-privacy__more {
+  margin: -8px 0 0;
+  font-size: 0.98rem;
+  text-align: center;
+}
+
+/* "Delete my saved data" waiting for one more Google sign-in: on the
+   Privacy screen and the leaderboard's account card */
+.scr-reauth {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0;
+  padding: 12px 14px;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: var(--butter);
+  box-shadow: 0 3px 0 var(--ink);
+  text-align: center;
+  animation: scr-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+.scr .scr-reauth p {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.scr .scr-reauth .scr-reauth__small {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.scr .scr-reauth .scr-reauth__note {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.scr .scr-reauth .scr-reauth__note[data-tone='ok'] {
+  background: var(--mint);
+  color: var(--green-dark);
+}
+
+.scr .scr-reauth .scr-reauth__note[data-tone='error'] {
+  background: var(--blush);
+  color: var(--red-dark);
+}
+
+/* the long label may wrap on a phone rather than run off the card */
+.scr-reauth .scr-btn {
+  max-width: 100%;
+  text-align: center;
 }
 
 /* ==========================================================================

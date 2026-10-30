@@ -92,8 +92,10 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
     linkResult: null, // error the next linkWithPopup throws
     linkCalls: 0,
     failDelete: null, // ref whose next delete fails
-    deleteUserError: null, // error deleteUser throws
+    deleteUserError: null, // error deleteUser throws (until a fresh sign-in, see reauthenticateWithPopup)
     deletedUsers: [],
+    reauthResult: null, // error the next reauthenticateWithPopup throws
+    reauthCalls: [], // the custom parameters of each reauthenticateWithPopup
     onCommit: null, // runs after each transaction commits, to stage races
     initializeApp: () => ({}),
     getApp: () => ({}),
@@ -123,8 +125,20 @@ function fakeSdk({ backend = fakeBackend(), now = () => 0 } = {}) {
       if (sdk.linkResult) throw sdk.linkResult;
       Object.assign(user, { isAnonymous: false, displayName: 'Pip Penguin' }); // same user, same uid
     },
+    // A fresh Google sign-in: deleteUser goes through after it.
+    reauthenticateWithPopup: async (user, provider) => {
+      sdk.reauthCalls.push(provider.params);
+      if (sdk.reauthResult) {
+        const err = sdk.reauthResult;
+        sdk.reauthResult = null;
+        throw err;
+      }
+      sdk.deleteUserError = null;
+    },
     GoogleAuthProvider: class {
-      setCustomParameters() {}
+      setCustomParameters(params) {
+        this.params = params;
+      }
       static credentialFromError(err) {
         return (err && err.credential) || null;
       }
@@ -297,6 +311,7 @@ describe('createCloud without a Firebase project', () => {
     expect((await cloud.signOutToFresh()).ok).toBe(false);
     expect((await cloud.resetEverywhere()).ok).toBe(false);
     expect(await cloud.deleteEverything()).toEqual({ ok: false, error: 'cloud-off' });
+    expect(await cloud.reauthAndDelete()).toEqual({ ok: false, error: 'cloud-off' });
     expect(await cloud.sendFeedback({ rating: 5, category: 'idea' })).toEqual({ ok: false, error: 'cloud-off' });
     expect(await cloud.getLeaderboard('bestNight')).toMatchObject({ entries: [], me: null, error: 'cloud-off' });
     expect(cloud.ready).toBe(false);
@@ -314,6 +329,7 @@ describe('createCloud when Firebase fails', () => {
     expect(await t.cloud.linkGoogle()).toEqual({ ok: false, reason: 'not-ready', error: 'not-ready' });
     expect((await t.cloud.resetEverywhere()).ok).toBe(false);
     expect((await t.cloud.deleteEverything()).ok).toBe(false);
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: false, reason: 'not-ready', error: 'not-ready' });
     expect((await t.cloud.getLeaderboard('totalPresents')).error).toBeTruthy();
     expect(await t.cloud.setProfile({ adj: 3 })).toBe(false);
     expect(t.save.profile.adj).toBe(3); // the name still changes on this device
@@ -947,22 +963,16 @@ describe('createCloud deleteEverything', () => {
     expect(t.badCoins).toBe(0);
   });
 
-  it('signs out of a Google account that needs a fresh sign-in to be deleted', async () => {
+  it("signs out of a guest's sign-in that Firebase won't delete, which holds only the player ID", async () => {
     const t = setup({ save: makeSave({ totalPresents: 60, settings: SETTINGS }) });
     await t.cloud.start();
-    expect(await t.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
     t.clock.advance(7000);
     t.sdk.deleteUserError = Object.assign(new Error('stale sign-in'), { code: 'auth/requires-recent-login' });
-    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: false });
-    expect(t.sdk.deletedUsers).toEqual([]);
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: false, guest: true });
     expect(t.sdk.store['players/anon1']).toBeUndefined();
-    expect(t.sdk.store['leaderboard/anon1']).toBeUndefined();
     expect(t.cloud.uid).toBe('anon2');
-    expect(t.cloud.status).toMatchObject({ isAnonymous: true, accountName: null, ready: true });
+    expect(t.cloud.status).toMatchObject({ isAnonymous: true, needsReauth: false, ready: true });
     expect(t.save).toMatchObject({ totalPresents: 0, settings: SETTINGS });
-    // The old progress never comes back under any uid.
-    await t.cloud.markDirty({ now: true });
-    expect(Object.values(t.sdk.store).some((d) => (d.save ? d.save.totalPresents : d.totalPresents) === 60)).toBe(false);
   });
 
   it('changes nothing on this device when the cloud delete fails, and can try again', async () => {
@@ -1089,9 +1099,15 @@ describe('createCloud deleteEverything', () => {
     await t.cloud.start();
     expect(await t.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
     t.clock.advance(7000);
-    t.sdk.deleteUserError = Object.assign(new Error('stale sign-in'), { code: 'auth/requires-recent-login' });
-    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: false });
+    // Firebase signed the Google account out by itself (its sign-in was
+    // revoked), so there is nobody left to confirm the delete with.
+    t.sdk.deleteUser = async () => {
+      t.sdk.auth.currentUser = null;
+      throw Object.assign(new Error('revoked'), { code: 'auth/user-token-expired' });
+    };
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: true, accountDeleted: false, guest: false });
     expect(t.cloud.uid).toBe('anon2');
+    expect(t.cloud.status.needsReauth).toBe(false);
     // "Sign in with Google" again finds the kept account (anon1) in use.
     t.sdk.linkResult = Object.assign(new Error('in use'), { code: 'auth/credential-already-in-use', credential: { uid: 'anon1' } });
     t.clock.advance(7000);
@@ -1109,6 +1125,144 @@ describe('createCloud deleteEverything', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBeTruthy();
     expect(t.save).toEqual(before);
+  });
+});
+
+describe('createCloud reauthAndDelete', () => {
+  const SETTINGS = { sfx: false, music: true, voice: false };
+  const STALE = () => Object.assign(new Error('stale sign-in'), { code: 'auth/requires-recent-login' });
+
+  // A Google player whose "Delete my saved data" got as far as the sign-in.
+  async function waitingToConfirm({ storage = null, sdk, clock } = {}) {
+    const t = setup({ storage, sdk, clock, save: makeSave({ totalPresents: 60, foundJokes: ['j001'], settings: SETTINGS }) });
+    await t.cloud.start();
+    expect(await t.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
+    t.sdk.auth.currentUser.email = 'holly@example.com';
+    await t.cloud.sendFeedback({ rating: 5, category: 'idea' });
+    t.clock.advance(7000);
+    t.sdk.deleteUserError = STALE();
+    expect(await t.cloud.deleteEverything()).toEqual({ ok: false, needsReauth: true, error: 'auth/requires-recent-login' });
+    return t;
+  }
+
+  function cloudHolds60(store) {
+    return Object.values(store).some((d) => (d.save ? d.save.totalPresents : d.totalPresents) === 60);
+  }
+
+  it('keeps a Google player signed in when Firebase wants a fresh sign-in, with the data gone and nothing written as it', async () => {
+    const t = await waitingToConfirm();
+    expect(t.sdk.deletedUsers).toEqual([]);
+    expect(Object.keys(t.sdk.store)).toEqual([]); // save, board entry, feedback and its stamp
+    expect(t.cloud.uid).toBe('anon1');
+    expect(t.cloud.status).toMatchObject({ needsReauth: true, isAnonymous: false, accountName: 'Pip', ready: true });
+    // This device started fresh already, keeping only the sound settings.
+    expect(t.save).toMatchObject({ totalPresents: 0, foundJokes: [], settings: SETTINGS });
+    const before = t.sdk.writes.length;
+    t.save.nights = 2;
+    expect(await t.cloud.markDirty({ now: true })).toBe(false);
+    expect(await t.cloud.resetEverywhere()).toEqual({ ok: false, error: 'offline' });
+    t.clock.advance(11 * 60 * 1000);
+    expect(await t.cloud.sendFeedback({ rating: 4, category: 'bug' })).toEqual({ ok: false, error: 'offline' });
+    expect((await t.cloud.signOutToFresh()).ok).toBe(false);
+    expect(t.cloud.uid).toBe('anon1');
+    expect(t.sdk.writes.slice(before)).toEqual([]);
+    expect(t.cloud.status.needsReauth).toBe(true);
+  });
+
+  it('opens the Google popup inside the tap, then deletes the sign-in and carries on as a new guest', async () => {
+    const t = await waitingToConfirm();
+    t.save.totalPresents = 3; // played a little since: new progress, which the new guest keeps
+    const result = t.cloud.reauthAndDelete();
+    expect(t.sdk.reauthCalls).toEqual([{ login_hint: 'holly@example.com' }]); // before anything was awaited
+    expect(await result).toEqual({ ok: true, accountDeleted: true });
+    expect(t.sdk.deletedUsers).toEqual(['anon1']);
+    expect(t.cloud.uid).toBe('anon2');
+    expect(t.cloud.status).toMatchObject({ state: 'synced', needsReauth: false, isAnonymous: true, accountName: null, ready: true });
+    expect(t.save).toMatchObject({ totalPresents: 3, settings: SETTINGS });
+    expect(t.sdk.store['players/anon2'].save).toEqual(toCloudSave(t.save));
+    expect(t.sdk.store['players/anon1']).toBeUndefined();
+    expect(cloudHolds60(t.sdk.store)).toBe(false);
+    expect(t.badCoins).toBe(0);
+  });
+
+  it('keeps the sign-in waiting, with a way to try again, after a closed popup, another account or no internet', async () => {
+    const t = await waitingToConfirm();
+    const cases = [
+      ['auth/popup-closed-by-user', { ok: false, cancelled: true, reason: 'cancelled', needsReauth: true, error: 'auth/popup-closed-by-user' }],
+      ['auth/user-mismatch', { ok: false, reason: 'wrong-account', needsReauth: true, error: 'auth/user-mismatch' }],
+      ['auth/popup-blocked', { ok: false, reason: 'blocked', needsReauth: true, error: 'auth/popup-blocked' }],
+      ['auth/network-request-failed', { ok: false, reason: 'offline', needsReauth: true, error: 'auth/network-request-failed' }],
+    ];
+    for (const [code, expected] of cases) {
+      t.sdk.reauthResult = Object.assign(new Error(code), { code });
+      expect(await t.cloud.reauthAndDelete()).toEqual(expected);
+      expect(t.sdk.deletedUsers).toEqual([]);
+      expect(t.cloud.uid).toBe('anon1');
+      expect(t.cloud.status.needsReauth).toBe(true);
+    }
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    expect(t.cloud.uid).toBe('anon2');
+  });
+
+  it('keeps it waiting when deleting fails after the confirmation, and can try again', async () => {
+    const t = await waitingToConfirm();
+    t.sdk.failDelete = 'players/anon1';
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: false, needsReauth: true, reason: 'offline', error: 'unavailable' });
+    expect(t.sdk.deletedUsers).toEqual([]);
+    expect(t.cloud.status.needsReauth).toBe(true);
+    t.sdk.deleteUserError = STALE(); // a new confirmation is needed again
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    expect(t.sdk.deletedUsers).toEqual(['anon1']);
+  });
+
+  it('deletes what another device on the account synced in the meantime', async () => {
+    const t = await waitingToConfirm();
+    t.sdk.store['players/anon1'] = { v: 1, save: toCloudSave(makeSave({ totalPresents: 60 })) };
+    t.sdk.store['leaderboard/anon1'] = { adj: 1, noun: 1, num: 1, bestNight: 5, totalPresents: 60, jokesFound: 0, nights: 1 };
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    expect(t.sdk.store['players/anon1']).toBeUndefined();
+    expect(t.sdk.store['leaderboard/anon1']).toBeUndefined();
+  });
+
+  it('never opens the popup, or deletes anything, for a player who did not ask', async () => {
+    const t = setup();
+    await t.cloud.start();
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: false, error: 'not-pending', needsReauth: false }); // a guest
+    expect(await t.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
+    expect(await t.cloud.reauthAndDelete()).toEqual({ ok: false, error: 'not-pending', needsReauth: false });
+    expect(t.sdk.reauthCalls).toEqual([]);
+    expect(t.sdk.deletedUsers).toEqual([]);
+    expect(t.sdk.store['players/anon1']).toBeDefined();
+  });
+
+  it('remembers the waiting sign-in through a reload, and finishes it there', async () => {
+    const storage = fakeStorage();
+    const t = await waitingToConfirm({ storage });
+    // The page reloads: a new facade on the same browser storage and sign-in.
+    const again = setup({ storage, sdk: t.sdk, clock: t.clock, save: structuredClone(t.save) });
+    expect(await again.cloud.start()).toBe(false); // nothing may sync as the deleted player
+    expect(again.cloud.status).toMatchObject({ needsReauth: true, isAnonymous: false, ready: true });
+    expect(Object.keys(t.sdk.store)).toEqual([]);
+    expect(await again.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    expect(again.cloud.status).toMatchObject({ needsReauth: false, isAnonymous: true, state: 'synced' });
+    expect(t.sdk.deletedUsers).toEqual(['anon1']);
+  });
+
+  it("puts the game's other tab on the new guest once one tab finishes", async () => {
+    const clock = fakeClock();
+    const storage = fakeStorage();
+    const sdk = fakeSdk({ now: clock.now }); // one sign-in shared by both tabs
+    const tabA = await waitingToConfirm({ storage, sdk, clock });
+    const tabB = setup({ clock, sdk, storage, save: makeSave({ totalPresents: 60 }) });
+    expect(await tabB.cloud.start()).toBe(false);
+    expect(tabB.save.totalPresents).toBe(0); // it drops its copy of the deleted progress
+    expect(tabB.cloud.status.needsReauth).toBe(true);
+    expect(Object.keys(sdk.store)).toEqual([]);
+    expect(await tabA.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    await settle();
+    expect(tabB.cloud.uid).toBe('anon2');
+    expect(tabB.cloud.status).toMatchObject({ needsReauth: false, isAnonymous: true, state: 'synced' });
+    expect(cloudHolds60(sdk.store)).toBe(false);
   });
 });
 

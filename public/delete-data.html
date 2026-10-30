@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Delete your data – Pip's Christmas Eve Hunt</title>
+    <meta name="description" content="How to delete everything Pip's Christmas Eve Hunt keeps about you: in the game, or by email without reinstalling it." />
+    <meta name="theme-color" content="#1b2450" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <!-- Google Play's "delete your data" page: stand-alone on purpose, no
+         script. The facts say what privacy.html and src/ui/privacy-text.js
+         say, word for word (test/privacy-pages.test.js checks). The styles
+         are privacy.html's, plus .steps. -->
+    <style>
+      @font-face {
+        font-family: 'Fredoka';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('fonts/fredoka-latin-400-normal.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'Fredoka';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url('fonts/fredoka-latin-600-normal.woff2') format('woff2');
+      }
+
+      /* the game's palette (src/styles.css, src/ui/screens.css) */
+      :root {
+        --night: #1b2450;
+        --night-deep: #0f1533;
+        --paper: #fff8ec;
+        --ink: #2a1b3d;
+        --ink-soft: #5b4a72;
+        --red: #e63946;
+        --green-dark: #1d7652;
+        --gold: #ffc94a;
+        --mint: #dff5ea;
+        --blush: #ffe3ec;
+        --butter: #fff1c4;
+        --sky: #dcefff;
+        --link: #2459b3;
+        --font: 'Fredoka', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        color-scheme: light;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--night-deep);
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        padding: 24px max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        background: radial-gradient(120% 70% at 50% 0%, #30408c 0%, var(--night) 45%, var(--night-deep) 100%) fixed var(--night-deep);
+        color: var(--ink);
+        font: 400 1.0625rem/1.55 var(--font);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        max-width: 760px;
+        margin: 0 auto;
+        overflow: hidden;
+        border: 3px solid var(--ink);
+        border-radius: 22px;
+        background: var(--paper);
+        box-shadow: 0 6px 0 rgba(42, 27, 61, 0.35), 0 12px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      /* candy-stripe ribbon along the top */
+      .page::before {
+        content: '';
+        display: block;
+        height: 12px;
+        border-bottom: 3px solid var(--ink);
+        background: repeating-linear-gradient(45deg, var(--red) 0 10px, #fff 10px 20px);
+      }
+
+      header {
+        padding: 22px 28px 6px;
+        text-align: center;
+      }
+
+      .app {
+        margin: 0;
+        color: var(--ink-soft);
+        font-weight: 600;
+      }
+
+      h1 {
+        margin: 2px 0 4px;
+        font-size: clamp(1.9rem, 7vw, 2.5rem);
+        font-weight: 600;
+        line-height: 1.15;
+      }
+
+      .updated {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.95rem;
+      }
+
+      main {
+        padding: 6px 28px 26px;
+      }
+
+      h2 {
+        margin: 30px 0 8px;
+        font-size: 1.3rem;
+        font-weight: 600;
+        line-height: 1.25;
+      }
+
+      h3 {
+        margin: 18px 0 4px;
+        font-size: 1.08rem;
+        font-weight: 600;
+      }
+
+      p,
+      ul,
+      ol {
+        margin: 0 0 12px;
+      }
+
+      ul,
+      ol {
+        padding-left: 1.3em;
+      }
+
+      li {
+        margin-bottom: 6px;
+      }
+
+      b,
+      strong {
+        font-weight: 600;
+      }
+
+      a {
+        color: var(--link);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        overflow-wrap: anywhere;
+      }
+
+      a:hover {
+        color: var(--ink);
+      }
+
+      a:focus-visible {
+        outline: 3px solid var(--gold);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      /* "In short": the same list as the in-game Privacy screen */
+      .short {
+        margin: 18px 0 8px;
+        padding: 16px 16px 6px;
+        border: 3px solid var(--ink);
+        border-radius: 6px 18px 6px 18px;
+        background: var(--sky);
+        box-shadow: 0 4px 0 var(--ink);
+      }
+
+      .short h2 {
+        margin-top: 0;
+      }
+
+      .facts {
+        margin: 0 0 10px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .facts li {
+        display: flex;
+        gap: 10px;
+        margin: 0 0 8px;
+        padding: 8px 12px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: #fff;
+      }
+
+      .facts li span {
+        flex: none;
+        width: 1.5em;
+        text-align: center;
+      }
+
+      .facts p {
+        min-width: 0;
+        margin: 0;
+      }
+
+      /* what is collected: one card per kind of data */
+      .data {
+        margin: 0 0 12px;
+        padding: 0;
+        list-style: none;
+      }
+
+      .data li {
+        margin: 0 0 10px;
+        padding: 10px 14px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: #fff;
+      }
+
+      .data li:nth-child(even) {
+        background: #fffaf0;
+      }
+
+      .data h3 {
+        margin: 0 0 2px;
+      }
+
+      .data p {
+        margin: 0 0 4px;
+      }
+
+      .data p:last-child {
+        margin-bottom: 0;
+      }
+
+      .tag {
+        display: inline-block;
+        margin-left: 4px;
+        padding: 0 8px;
+        border: 2px solid var(--ink);
+        border-radius: 999px;
+        background: var(--mint);
+        font-size: 0.8rem;
+        font-weight: 600;
+        line-height: 1.5;
+        vertical-align: 2px;
+        white-space: nowrap;
+      }
+
+      .tag.optional {
+        background: var(--butter);
+      }
+
+      .note {
+        padding: 10px 14px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: var(--blush);
+      }
+
+      /* the in-game steps: numbered stickers */
+      .steps {
+        margin: 0 0 12px;
+        padding: 0;
+        list-style: none;
+        counter-reset: step;
+      }
+
+      .steps li {
+        position: relative;
+        margin: 0 0 8px;
+        padding: 8px 12px 8px 50px;
+        border: 2px solid var(--ink);
+        border-radius: 12px;
+        background: #fff;
+        counter-increment: step;
+      }
+
+      .steps li::before {
+        content: counter(step);
+        position: absolute;
+        top: 8px;
+        left: 10px;
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border: 2px solid var(--ink);
+        border-radius: 50%;
+        background: var(--gold);
+        font-weight: 600;
+        line-height: 1;
+      }
+
+      .way {
+        margin: 18px 0;
+        padding: 16px 16px 6px;
+        border: 3px solid var(--ink);
+        border-radius: 6px 18px 6px 18px;
+        background: var(--sky);
+        box-shadow: 0 4px 0 var(--ink);
+      }
+
+      .way.email {
+        background: var(--mint);
+      }
+
+      .way h2 {
+        margin-top: 0;
+      }
+
+      footer {
+        padding: 16px 28px 22px;
+        border-top: 3px dashed rgba(42, 27, 61, 0.2);
+        text-align: center;
+      }
+
+      footer p {
+        margin: 0 0 6px;
+      }
+
+      @media (max-width: 480px) {
+        body {
+          padding-top: 12px;
+          font-size: 1rem;
+        }
+
+        header,
+        main,
+        footer {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+
+        .short,
+        .way {
+          padding: 12px 10px 4px;
+        }
+
+        .facts li {
+          gap: 8px;
+          padding: 8px 10px;
+        }
+      }
+
+      @media print {
+        body {
+          padding: 0;
+          background: none;
+        }
+
+        .page {
+          border: 0;
+          box-shadow: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <p class="app"><span aria-hidden="true">🐧🎁 </span>Pip's Christmas Eve Hunt</p>
+        <h1>Delete your data</h1>
+        <p class="updated">Last updated: 30 October 2026</p>
+      </header>
+
+      <main>
+        <p>
+          You can delete everything Pip's Christmas Eve Hunt keeps about you: straight away in the game, or by asking us by email. You don't need to open or
+          reinstall the game to ask.
+        </p>
+
+        <section class="way" aria-labelledby="in-game">
+          <h2 id="in-game"><span aria-hidden="true">🗑️ </span>In the game</h2>
+          <ol class="steps">
+            <li>Open Pip's Christmas Eve Hunt on the phone, tablet or computer you play on (the Android app, or the web game).</li>
+            <li>On the title screen, tap <b>🔒 Privacy</b> (at the bottom, next to "Reset progress"). It is also under <b>Leaderboard</b>, in the "Play on any device" card.</li>
+            <li>Tap <b>Delete my saved data</b>, then <b>Yes, delete it</b>.</li>
+            <li>
+              Signed in with Google? The game may ask you to confirm once more: tap <b>Confirm with Google to finish deleting</b> and pick the same Google
+              account.
+            </li>
+          </ol>
+          <p>In the game it happens straight away.</p>
+          <p>
+            On Android, the app and Chrome share the game's saved data, so you can also do this in Chrome at
+            <a href="https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/">godwin20.github.io/Pip-s-Christmas-Eve-Hunt</a>.
+          </p>
+        </section>
+
+        <section class="way email" aria-labelledby="by-email">
+          <h2 id="by-email"><span aria-hidden="true">✉️ </span>By email</h2>
+          <p>
+            Email <a href="mailto:keithstack1@gmail.com?subject=Delete%20my%20data%20(Pip's%20Christmas%20Eve%20Hunt)">keithstack1@gmail.com</a> with the
+            subject "Delete my data". If you signed in with Google, send it from that Google account's email address (or tell us which address it was), so we
+            can find the account and know the request is yours.
+          </p>
+          <p>If you email us, we delete it within 30 days and tell you when it's done.</p>
+          <p class="note">
+            Only ever played as a guest? A guest's save has no name or email on it, so an email can't tell us which one is yours. Please use the button in
+            the game on that device instead.
+          </p>
+        </section>
+
+        <h2 id="deleted">What is deleted</h2>
+        <p>Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name and profile photo.</p>
+        <p>Your Google account itself stays as it is: only its link to this game goes.</p>
+        <p>On the device, the game starts fresh with a new snow name. Only the sound settings stay.</p>
+
+        <h2 id="kept">What is kept for a while, and why</h2>
+        <p>Google keeps its own security logs, which include IP addresses, for a few weeks, and deleted data leaves Google's backups within about 180 days.</p>
+        <p>
+          Google keeps these to protect its services from abuse and to recover from faults. They are not used to play the game or to contact you, and Google
+          deletes them on its own schedule.
+        </p>
+        <p>A guest's sign-in holds only the random player ID. Firebase may keep that ID, but nothing is stored under it any more.</p>
+        <p>
+          Firebase only deletes a sign-in that signed in during the last few minutes. A guest can't sign in again to confirm, so the game signs out of it
+          instead. On its own the ID can't be linked to you. Nothing else is kept.
+        </p>
+
+        <h2 id="how-long">How long it takes</h2>
+        <p>In the game it happens straight away. If you email us, we delete it within 30 days and tell you when it's done.</p>
+
+        <h2 id="otherwise">If you don't delete anything</h2>
+        <p>
+          <b>How long:</b> until you delete it. The game's maker may also clear away, by hand, saves, leaderboard entries and sign-ins that haven't been
+          used for 2 years.
+        </p>
+      </main>
+
+      <footer>
+        <p><a href="privacy.html">Privacy policy</a> · <a href="./">Play Pip's Christmas Eve Hunt</a></p>
+        <p>Contact: <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a></p>
+      </footer>
+    </div>
+  </body>
+</html>

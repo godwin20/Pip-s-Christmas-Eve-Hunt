@@ -31,6 +31,7 @@ import { createScreens } from './ui/screens.js';
 import { createCloud } from './cloud/cloud.js';
 import { ensureProfile } from './cloud/merge.js';
 import { createPwa } from './core/pwa.js';
+import { showGlNote } from './ui/glnote.js';
 
 // Dev server only: Vite turns import.meta.env.DEV into `false` in production
 // builds, so the debug keys and window.__game are stripped from the live game
@@ -51,7 +52,26 @@ const HAT_COLOURS = [0xff5d73, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xc77dff, 0xff9f45,
 
 // ---------------------------------------------------------------- renderer
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const appRoot = document.getElementById('app');
+
+function createRenderer() {
+  try {
+    return new THREE.WebGLRenderer({ canvas, antialias: true });
+  } catch (err) {
+    console.warn('[main] no WebGL here, so no 3D', err);
+    return null;
+  }
+}
+
+const renderer = createRenderer();
+if (!renderer) {
+  // No WebGL (an old or locked-down browser, hardware acceleration switched
+  // off): a friendly note instead of a blank page. Everything below needs
+  // the renderer, so a promise that never settles stops this module here,
+  // quietly: no error, no cloud sign-in, no service worker.
+  showGlNote('nogl', { root: appRoot });
+  await new Promise(() => {});
+}
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -375,6 +395,13 @@ function pause() {
 
 function resume() {
   if (state !== 'paused') return;
+  // Esc reaches the pause menu even under the "Tap to reload" note. The
+  // night waits for the 3D to come back, so the menu stays (redrawn, or the
+  // screens would hide it, thinking the night had resumed).
+  if (glLost) {
+    screens.showPause();
+    return;
+  }
   screens.hideAll();
   state = 'playing';
   canvas.focus();
@@ -740,12 +767,18 @@ function updateDebug() {
 let elapsed = 0;
 let lastFrameMs = performance.now();
 let frameErrors = 0;
+let glLost = null; // the "Tap to reload" note while the browser has taken the 3D away
 
 function frame(nowMs) {
   // scheduled first so one bad frame can never stop the game for good
   requestAnimationFrame(frame);
   const dt = Math.min(Math.max(0, (nowMs - lastFrameMs) / 1000), 0.05);
   lastFrameMs = nowMs;
+  // nothing to draw on, and the night waits (paused) until the 3D is back
+  if (glLost) {
+    input.endFrame();
+    return;
+  }
   elapsed += dt;
 
   try {
@@ -789,6 +822,22 @@ window.addEventListener('keydown', unlockAudioOnce);
 
 window.addEventListener('blur', () => {
   if (state === 'playing') pause();
+});
+
+// The browser can take the 3D away mid-game (a graphics reset, a phone short
+// of memory). preventDefault asks for it back: the night pauses behind a
+// note and carries on once webglcontextrestored arrives (three.js rebuilds
+// what it needs). "Tap to reload" is there in case it never does.
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  if (glLost) return;
+  pause();
+  glLost = showGlNote('lost', { root: appRoot });
+});
+canvas.addEventListener('webglcontextrestored', () => {
+  if (!glLost) return;
+  glLost.hide();
+  glLost = null;
 });
 
 // A reload or closed tab mid-night keeps everything earned so far (coins from

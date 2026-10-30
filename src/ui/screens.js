@@ -14,6 +14,7 @@ import { RARITY_COINS } from '../game/crackers.js';
 import { defaultSave } from '../core/save.js';
 import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
 import { PRIVACY_CONTACT } from '../cloud/config.js';
+import { PRIVACY_FACTS, DELETE_FACTS, POLICY_PAGE } from './privacy-text.js';
 import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, FEEDBACK_QUICK_MAX, FEEDBACK_COMMENT_MAX, cleanSeed } from '../cloud/feedback.js';
 import { isInAppBrowser, isIPad } from '../core/pwa.js';
 
@@ -114,9 +115,18 @@ const GATE_STORE_KEY = 'pips-hunt-gate-until'; // sessionStorage: this tab only
 const LINKED_TEXT = 'All set! Your progress now follows your Google account. ✨';
 const SWITCHED_TEXT = "Welcome back! We found your saved progress and added this device's progress to it. ✨";
 const DELETED_TEXT = 'All deleted. This device starts fresh with a new snow name.';
-// deleteEverything() answers accountDeleted: false when Firebase wanted a fresh
-// Google sign-in before removing it (and signed out instead)
+// deleteEverything() answers accountDeleted: false (guest: false) when Firebase
+// had already signed a Google account out by itself, so nobody could confirm it
 const DELETED_KEPT_TEXT = 'Your saved data is deleted and this device starts fresh. To remove the Google sign-in too, sign in again and delete straight away.';
+// ...and needsReauth when Google wants a grown-up to confirm once more before
+// the Google sign-in can go. The rest is deleted already, and the cloud's
+// status.needsReauth keeps "Confirm with Google" on screen until it is done.
+const REAUTH_TEXT =
+  'Your saved data is deleted and this device starts fresh. One more step: Google wants a grown-up to confirm, and then the Google sign-in (email address, name and profile photo) goes too.';
+const REAUTH_PICK = 'Pick the Google account you signed in with.';
+const REAUTH_LABEL = 'Confirm with Google to finish deleting';
+const REAUTH_CLOSED = "The Google window closed, so the Google sign-in is still here. Press the button again when you're ready.";
+const REAUTH_WRONG = "That's a different Google account. Please pick the one you signed in to the game with.";
 const IN_APP_TEXT = 'To sign in with Google, open this game in Safari or Chrome.';
 const SAFARI_GUEST_TEXT = "On iPhone and iPad, Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.";
 // iPhone / iPad keep a Home Screen app's storage apart from Safari's tabs.
@@ -456,6 +466,8 @@ function backText(joke) {
 // sign-in strip next to the chip.)
 function cloudInfo(status) {
   const s = status && typeof status === 'object' ? status : {};
+  // "Delete my saved data" waits for Google: nothing syncs until it is done
+  if (s.needsReauth === true) return { tone: 'warn', text: 'Almost deleted: confirm with Google' };
   switch (s.state) {
     case 'connecting':
       return { tone: 'busy', text: 'Finding the cloud…' };
@@ -472,14 +484,15 @@ function cloudInfo(status) {
   }
 }
 
-// Which account view to show: 'checking', 'guest' or 'google:<name>'. The views
+// Which account view to show: 'checking', 'guest', 'google:<name>' or
+// 'pending:<name>' (a delete waiting for Google, status.needsReauth). The views
 // only rebuild when this changes, so "Saving…" ↔ "Saved" flips never touch
 // their buttons (or the focus). Before the first sync the facade still reports
 // its default isAnonymous: true, so a returning Google player would see a
 // "Sign in" button flash up at boot without the 'checking' step.
 function accountSig(status) {
   const s = status && typeof status === 'object' ? status : {};
-  if (s.isAnonymous === false) return `google:${typeof s.accountName === 'string' ? s.accountName : ''}`;
+  if (s.isAnonymous === false) return `${s.needsReauth === true ? 'pending' : 'google'}:${typeof s.accountName === 'string' ? s.accountName : ''}`;
   if (!s.lastSyncedAt && (s.state === 'off' || s.state === 'connecting')) return 'checking';
   return 'guest';
 }
@@ -538,6 +551,18 @@ function deleteErrorText(err, timedOut) {
   if (looksOffline(err)) return "You're offline right now. Please try again when the internet is back.";
   if (isNotReady(err)) return 'One moment… then try again.';
   return "Couldn't delete just now. Please try again.";
+}
+
+// What "Confirm with Google to finish deleting" says when reauthAndDelete()
+// answers { ok: false }. The button stays, so the player can try again.
+function reauthErrorText(res) {
+  const code = errorText(res && res.error);
+  const reason = res && res.reason;
+  if (reason === 'wrong-account' || /user-mismatch/i.test(code)) return REAUTH_WRONG;
+  if (reason === 'blocked' || /popup-blocked/i.test(code)) return linkErrorText(code, 'blocked');
+  if (reason === 'offline' || looksOffline(code)) return linkErrorText(code, 'offline');
+  if (isNotReady(code, reason)) return 'One moment… then tap the button again.';
+  return "Couldn't finish deleting just now. Please try again.";
 }
 
 // What the feedback card says when sendFeedback() answers { ok: false, error }.
@@ -924,6 +949,9 @@ export function createScreens(root, deps = {}) {
       return false;
     }
   };
+  // "Delete my saved data" is waiting for one more Google sign-in before the
+  // Google account's sign-in can go (docs/CLOUD.md, status.needsReauth).
+  const reauthPending = () => cloudStatus().needsReauth === true && hasCloudMethod('reauthAndDelete');
   // Fixed for the page's life, so it is read once. Google refuses sign-in
   // inside apps' own browsers (src/core/pwa.js), so those get a "use Safari
   // or Chrome" note instead of a button that can't work.
@@ -1663,8 +1691,18 @@ export function createScreens(root, deps = {}) {
     const note = authNote();
     const ready = cloudReady();
     const offline = cloudStatus().state === 'offline';
-    const busyOp = op && (op.kind === 'signout' || op.kind === 'delete') ? op : null;
-    const view = busyOp ? 'busy' : sig === 'checking' ? 'checking' : sig !== 'guest' ? 'google' : IN_APP ? 'inapp' : 'guest';
+    const busyOp = op && (op.kind === 'signout' || op.kind === 'delete' || (op.kind === 'reauth' && !op.slow)) ? op : null;
+    const view = busyOp
+      ? 'busy'
+      : sig === 'checking'
+        ? 'checking'
+        : sig.startsWith('pending:')
+          ? 'pending'
+          : sig !== 'guest'
+            ? 'google'
+            : IN_APP
+              ? 'inapp'
+              : 'guest';
     if (view !== 'guest' && gateHere('title')) state.gate = null; // signed in elsewhere meanwhile
     const gate = gateHere('title');
     const key = `${sig}|${op ? `${op.kind}:${op.token}:${op.slow}` : ''}|${note ? note.text : ''}|${ready}|${offline}|${gate ? gateSig(gate) : ''}`;
@@ -1701,8 +1739,23 @@ export function createScreens(root, deps = {}) {
         ),
         note ? h('p', { class: 'scr-titleauth__line', 'data-tone': note.tone }, note.text) : null,
       ];
+    } else if (view === 'pending') {
+      // a delete waiting for Google: the Privacy screen has the button
+      kids = [
+        h('p', { class: 'scr-titleauth__line' }, 'Almost deleted: Google wants a grown-up to confirm.'),
+        button('Finish deleting', {
+          icon: '🗑️',
+          variant: 'snow',
+          size: 'small',
+          key: 'finish-delete',
+          onClick: () => {
+            play('click');
+            openPrivacy('title');
+          },
+        }),
+      ];
     } else if (view === 'busy') {
-      kids = [h('p', { class: 'scr-titleauth__line', 'data-tone': 'info' }, busyOp.kind === 'delete' ? 'Deleting your saved data…' : 'Signing out…')];
+      kids = [h('p', { class: 'scr-titleauth__line', 'data-tone': 'info' }, busyOp.kind === 'signout' ? 'Signing out…' : 'Deleting your saved data…')];
     }
     keepFocus(box, () => box.replaceChildren(...kids.filter(Boolean)), () => box.querySelector('button') || (view === 'checking' ? cloudChip : box));
     if (view === 'checking') whenCheckingEnds(renderTitleAuth);
@@ -3516,18 +3569,22 @@ export function createScreens(root, deps = {}) {
     lb.ready = cloudReady();
     // a sign-out in flight keeps its card until it answers, whatever the status says meanwhile
     const op = state.auth.op;
-    const view = op && op.kind === 'signout' ? 'google' : lb.sig === 'checking' || lb.sig === 'guest' ? lb.sig : 'google';
+    const view =
+      op && op.kind === 'signout' ? 'google' : lb.sig === 'checking' || lb.sig === 'guest' ? lb.sig : lb.sig.startsWith('pending:') ? 'pending' : 'google';
     // signed out elsewhere while the question was up: don't bring it back later
     // (and don't make Esc close an invisible question first)
     if (view !== 'google') lb.confirmSignOut = false;
     if (view !== 'guest' && gateHere('leaderboard')) state.gate = null;
     if (view === 'checking' && !(op && op.kind === 'delete')) state.confirmDelete = false;
+    if (view === 'pending') state.confirmDelete = false;
     const kids =
       view === 'checking'
         ? [h('p', null, 'Looking for your cloud save…'), op && op.kind === 'delete' ? accountLinks(lb) : null]
         : view === 'guest'
           ? guestView(lb)
-          : googleView(lb, st);
+          : view === 'pending'
+            ? [h('div', { class: 'scr-reauth' }, reauthPanel()), accountLinks(lb)]
+            : googleView(lb, st);
     keepFocus(refs.body, () => refs.body.replaceChildren(...kids.filter(Boolean)), () => refs.body.querySelector('button') || refs.card);
     if (view === 'checking') whenCheckingEnds(syncAccountCard);
   }
@@ -3658,7 +3715,7 @@ export function createScreens(root, deps = {}) {
         h('span', { 'aria-hidden': 'true' }, '🔒'),
         ' Privacy'
       ),
-      hasCloudMethod('deleteEverything')
+      hasCloudMethod('deleteEverything') && !reauthPending()
         ? h('button', { type: 'button', class: 'scr-textlink', 'data-key': 'delete', onclick: () => askDelete() }, h('span', { 'aria-hidden': 'true' }, '🗑️'), ' Delete my saved data')
         : null
     );
@@ -3694,7 +3751,7 @@ export function createScreens(root, deps = {}) {
   // account changes one at a time, and the older answer is then ignored).
   function authBusy() {
     const op = state.auth.op;
-    return !!op && !(op.kind === 'link' && op.slow);
+    return !!op && !((op.kind === 'link' || op.kind === 'reauth') && op.slow);
   }
 
   // Whichever screen shows the account right now picks up the change.
@@ -4054,7 +4111,7 @@ export function createScreens(root, deps = {}) {
         h(
           'span',
           { id: `${id}-d` },
-          "Your progress, snow name, scores and any feedback you sent are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
+          "Your progress, snow name, scores, any feedback you sent and any Google sign-in are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
         )
       ),
       h('div', { class: 'scr-confirm__btns' }, keep, yes)
@@ -4101,9 +4158,11 @@ export function createScreens(root, deps = {}) {
       if (timedOut && !a.op) return; // answered in time
       a.op = null;
       state.confirmDelete = false;
-      if (res.ok) {
-        setAuthNote('ok', res.accountDeleted === false ? DELETED_KEPT_TEXT : DELETED_TEXT);
-        state.boardCache.clear(); // "me" is a brand-new guest now
+      if (res.ok || res.needsReauth) {
+        // a guest's leftover sign-in holds only the random player ID
+        if (res.ok) setAuthNote('ok', res.accountDeleted === false && res.guest !== true ? DELETED_KEPT_TEXT : DELETED_TEXT);
+        else a.note = null; // the "Confirm with Google" panel says what is left
+        state.boardCache.clear(); // "me" is a brand-new guest now (or nobody, for now)
         state.spareName = null;
         if (state.lb) scheduleBoardReload(state.lb, 600);
       } else {
@@ -4111,10 +4170,87 @@ export function createScreens(root, deps = {}) {
         authSound('error');
       }
       renderAuthViews();
-      announce(a.note.text);
+      if (res.needsReauth && reauthPending()) {
+        const box = deleteBox();
+        focusEl(box && box.querySelector('[data-key="reauth"]'));
+        announce(REAUTH_TEXT);
+        return;
+      }
+      announce(a.note ? a.note.text : '');
     };
     authLater(() => finish({ ok: false, error: 'timeout' }, true), DELETE_TIMEOUT_MS);
     whenDone(cloudCall('deleteEverything'), (res) => finish(res, false));
+  }
+
+  // "Confirm with Google to finish deleting", on the Privacy screen and the
+  // account card while a delete waits for Google (reauthPending). The note
+  // under it says how the last try went.
+  function reauthPanel() {
+    const op = state.auth.op;
+    const running = op && op.kind === 'reauth' ? op : null;
+    const busy = !!running && !running.slow;
+    const ready = cloudReady();
+    const btn = button(busy ? 'Waiting for Google…' : ready ? REAUTH_LABEL : 'One moment…', {
+      icon: busy ? '❄' : 'G',
+      variant: 'snow',
+      size: 'small',
+      key: 'reauth',
+      cls: `scr-gbtn${busy ? ' is-busy' : ''}${ready ? '' : ' is-waiting'}`,
+      // no await, no promise, nothing in between: straight to the facade
+      onClick: () => startReauthDelete(),
+    });
+    if (busy || !ready) btn.setAttribute('aria-disabled', 'true');
+    const note = running
+      ? { tone: 'info', text: running.slow ? 'Still waiting for Google. If the window closed, press the button again.' : `A Google window should pop up. ${REAUTH_PICK}` }
+      : authNote();
+    const contact = contactEl();
+    return [
+      h('p', { class: 'scr-reauth__text' }, REAUTH_TEXT),
+      h('div', { class: 'scr-reauth__btns' }, btn),
+      h('p', { class: 'scr-reauth__small' }, REAUTH_PICK, contact ? [" Can't do it here? Contact ", contact, " and we'll finish it within 30 days."] : null),
+      note ? h('p', { class: 'scr-reauth__note', 'data-tone': note.tone }, note.text) : null,
+    ];
+  }
+
+  // Like linkGoogle: Safari opens Google's window only inside the tap, so the
+  // facade comes first, before any sound, redraw or promise. The popup waits
+  // on a grown-up, so after CLOUD_TIMEOUT_MS the button wakes up again (a
+  // late answer still lands).
+  function startReauthDelete() {
+    const a = state.auth;
+    if (authBusy() || !cloudReady() || !reauthPending()) return;
+    const result = cloudCall('reauthAndDelete');
+    play('click');
+    const token = ++a.seq;
+    a.op = { kind: 'reauth', token, slow: false };
+    a.note = null;
+    renderAuthViews();
+    announce('Opening the Google window to confirm.');
+    authLater(() => {
+      if (!a.op || a.op.token !== token) return;
+      a.op.slow = true;
+      renderAuthViews();
+    }, CLOUD_TIMEOUT_MS);
+    whenDone(result, (res) => {
+      if (a.seq !== token) return; // a newer try owns the buttons
+      a.op = null;
+      if (res.ok) {
+        setAuthNote('ok', DELETED_TEXT);
+        authSound('jingle');
+        state.boardCache.clear(); // "me" is a brand-new guest now
+        state.spareName = null;
+        if (state.lb) scheduleBoardReload(state.lb, 600);
+      } else if (/not-pending/i.test(errorText(res.error))) {
+        a.note = null; // finished in another tab, or nothing to finish: the status shows which
+      } else if (isCancelled(res)) {
+        setAuthNote('info', REAUTH_CLOSED); // a change of mind: no buzzer
+      } else {
+        setAuthNote(isNotReady(res.error, res.reason) ? 'info' : 'error', reauthErrorText(res));
+        if (a.note.tone === 'error') authSound('error');
+      }
+      renderAuthViews();
+      announce(a.note ? a.note.text : '');
+    });
   }
 
   // The title chip opens the leaderboard here, at the sign-in card.
@@ -4181,25 +4317,29 @@ export function createScreens(root, deps = {}) {
     open('privacy', buildPrivacy);
   }
 
+  // PRIVACY_CONTACT (src/cloud/config.js) as a link: mailto, or a web page
+  // in a new tab. Plain text if it is neither, null if there is none.
+  function contactEl() {
+    const contact = contactLink(PRIVACY_CONTACT);
+    if (!contact) return null;
+    if (!contact.href) return h('b', { class: 'scr-privacy__contact' }, contact.text);
+    return h(
+      'a',
+      {
+        class: 'scr-privacy__contact',
+        href: contact.href,
+        target: contact.external ? '_blank' : null,
+        rel: contact.external ? 'noopener noreferrer' : null,
+      },
+      contact.text,
+      contact.external ? h('span', { class: 'scr-sr' }, ' (opens in a new tab)') : null
+    );
+  }
+
   function buildPrivacy() {
     const hasCloud = !!cloud();
     const canDelete = hasCloud && hasCloudMethod('deleteEverything');
-    const contact = contactLink(PRIVACY_CONTACT);
-    const contactEl = contact
-      ? contact.href
-        ? h(
-            'a',
-            {
-              class: 'scr-privacy__contact',
-              href: contact.href,
-              target: contact.external ? '_blank' : null,
-              rel: contact.external ? 'noopener noreferrer' : null,
-            },
-            contact.text,
-            contact.external ? h('span', { class: 'scr-sr' }, ' (opens in a new tab)') : null
-          )
-        : h('b', { class: 'scr-privacy__contact' }, contact.text)
-      : null;
+    const contact = contactEl();
     const item = (icon, lead, ...text) =>
       h(
         'li',
@@ -4209,26 +4349,13 @@ export function createScreens(root, deps = {}) {
       );
     // "To delete": the button where there is one, and the contact when set
     let toDelete;
-    if (!hasCloud) toDelete = contactEl ? ['use "Reset progress" on the title screen. Questions? Contact ', contactEl, '.'] : 'use "Reset progress" on the title screen.';
-    else if (canDelete) toDelete = contactEl ? ['use the "Delete my saved data" button below, or contact ', contactEl, '.'] : 'use the "Delete my saved data" button below.';
-    else toDelete = contactEl ? ['contact ', contactEl, '.'] : '"Reset progress" on the title screen clears this device.';
+    if (!hasCloud) toDelete = contact ? ['use "Reset progress" on the title screen. Questions? Contact ', contact, '.'] : 'use "Reset progress" on the title screen.';
+    else if (canDelete) toDelete = contact ? ['use the "Delete my saved data" button below, or contact ', contact, '.'] : 'use the "Delete my saved data" button below.';
+    else toDelete = contact ? ['contact ', contact, '.'] : '"Reset progress" on the title screen clears this device.';
+    // The cloud's list says what public/privacy.html says, word for word
+    // (src/ui/privacy-text.js).
     const items = hasCloud
-      ? [
-          item('🐧', 'Guests:', 'we keep a random player ID, the game progress and the snow name. No name, email or location.'),
-          item('🔑', 'Google sign-in:', "Google Firebase also keeps the account's email, name and photo, so progress can follow you. Only grown-ups should do this."),
-          item('🏆', 'Leaderboard:', 'shows only snow names made from our word lists, and scores.'),
-          // one-way to the game's maker, so the "no chat" below stays true
-          item(
-            '⭐',
-            'Feedback:',
-            "if you send some, we keep the stars, topic, quick notes, any grown-up's note, the map number, device type (touch or keyboard), app version and the player ID, to improve the game. Only the game's maker reads it; other players never see it."
-          ),
-          item('🚫', 'Never:', 'no ads, no analytics, no tracking, no chat.'),
-          item('☁️', 'Where:', 'Google Cloud (Firebase).'),
-          item('⏳', 'How long:', 'until you delete it, or until saves unused for 2 years are cleared.'),
-          item('📱', 'iPhone and iPad:', "Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it."),
-          item('🗑️', 'To delete:', toDelete),
-        ]
+      ? [...PRIVACY_FACTS.map((f) => item(f.icon, f.lead, f.text)), item('🗑️', 'To delete:', toDelete)]
       : [
           // no cloud in this copy of the game: everything stays in this browser
           item('💾', 'Saved on this device only:', 'the game progress, sound settings and snow name. No account, name, email or location.'),
@@ -4236,15 +4363,31 @@ export function createScreens(root, deps = {}) {
           item('📱', 'iPhone and iPad:', 'Safari may clear saved progress after about a week of not playing.'),
           item('🧹', 'To delete:', toDelete),
         ];
+    // The full policy describes the game with its cloud, so a copy without
+    // one doesn't link it. A new tab keeps the game where it was.
+    const policy = hasCloud
+      ? h(
+          'p',
+          { class: 'scr-privacy__more' },
+          h(
+            'a',
+            { class: 'scr-privacy__contact', href: POLICY_PAGE, target: '_blank', rel: 'noopener', 'data-key': 'policy' },
+            h('span', { 'aria-hidden': 'true' }, '📄 '),
+            'Read the full privacy policy',
+            h('span', { class: 'scr-sr' }, ' (opens in a new tab)')
+          )
+        )
+      : null;
 
     const live = h('p', { class: 'scr-sr', role: 'status' });
     const box = canDelete ? h('div', { class: 'scr-privacy__delbody' }) : null;
     const delTitle = 'scr-privacy-del';
-    state.privacy = { box, live };
+    state.privacy = { box, live, key: '' };
     const body = h(
       'div',
       { class: 'scr-privacy' },
       h('ul', { class: 'scr-privacy__list' }, items),
+      policy,
       box
         ? h(
             'section',
@@ -4277,13 +4420,19 @@ export function createScreens(root, deps = {}) {
     const refs = state.privacy;
     if (!refs || !refs.box) return;
     const deleting = !!(state.auth.op && state.auth.op.kind === 'delete');
+    const pending = !deleting && reauthPending();
+    if (pending) state.confirmDelete = false;
+    refs.key = privacyKey();
     const note = authNote();
     const kids = [];
-    if (deleting || state.confirmDelete) {
+    if (pending) {
+      // everything but the Google sign-in is gone: one more tap for that
+      kids.push(h('div', { class: 'scr-reauth' }, reauthPanel()));
+    } else if (deleting || state.confirmDelete) {
       kids.push(deleteConfirm('scr-privacy-delq'));
     } else {
       kids.push(
-        h('p', null, "Deletes this game's cloud save, snow name, scores and any feedback you sent, then starts this device fresh."),
+        h('p', null, `${DELETE_FACTS.what} This device then starts fresh.`),
         h(
           'div',
           { class: 'scr-privacy__btns' },
@@ -4291,8 +4440,14 @@ export function createScreens(root, deps = {}) {
         )
       );
     }
-    if (note && !deleting) kids.push(h('p', { class: 'scr-privacy__note', 'data-tone': note.tone }, note.text));
+    // (the waiting panel shows its own note)
+    if (note && !deleting && !pending) kids.push(h('p', { class: 'scr-privacy__note', 'data-tone': note.tone }, note.text));
     keepFocus(refs.box, () => refs.box.replaceChildren(...kids), () => refs.box.querySelector('button'));
+  }
+
+  // What the delete box shows that the cloud's status can change.
+  function privacyKey() {
+    return `${reauthPending()}|${cloudReady()}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -5092,6 +5247,8 @@ export function createScreens(root, deps = {}) {
         renderCloudChip();
         renderTitleAuth();
       } else if (state.current === 'leaderboard') leaderboardStatusChanged();
+      // a delete waiting for Google (or done in another tab), or the cloud got ready
+      else if (state.current === 'privacy' && state.privacy && state.privacy.key !== privacyKey()) renderPrivacyDelete();
     } catch (err) {
       console.error('[screens] cloudChanged failed', err);
     }

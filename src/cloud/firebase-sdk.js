@@ -17,6 +17,7 @@ export {
   signInAnonymously,
   signInWithCredential,
   linkWithPopup,
+  reauthenticateWithPopup,
   signOut,
   deleteUser,
   onAuthStateChanged,

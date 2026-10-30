@@ -78,6 +78,8 @@ function sameProgress(a, b) {
 //   persistence   'local' (IndexedDB, the default) or 'memory'
 //   linkWith      (sdk, user, provider) => Promise, in place of the Google popup
 //                 (called the same way: synchronously, inside linkGoogle())
+//   reauthWith    (sdk, user, provider) => Promise, in place of the popup that
+//                 confirms a Google sign-in again (inside reauthAndDelete())
 //   appName       Firebase app name, so one process can run several "devices"
 //   storage       localStorage stand-in shared by one browser's tabs (null: none)
 //   now, setTimer, clearTimer, random   clock, timers and dice
@@ -94,13 +96,14 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
   };
   const loadFirebase = options.loadFirebase || (() => import('./firebase-sdk.js'));
   const linkWith = options.linkWith || ((sdk, user, provider) => sdk.linkWithPopup(user, provider));
+  const reauthWith = options.reauthWith || ((sdk, user, provider) => sdk.reauthenticateWithPopup(user, provider));
   const now = options.now || (() => Date.now());
   const setTimer = options.setTimer || ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = options.clearTimer || ((id) => clearTimeout(id));
   const random = options.random || Math.random;
 
   // `ready` also lives in the status, so onStatus fires when it changes.
-  let status = { state: 'off', ready: false, isAnonymous: true, accountName: null, lastSyncedAt: null, error: null };
+  let status = { state: 'off', ready: false, isAnonymous: true, accountName: null, lastSyncedAt: null, error: null, needsReauth: false };
   let sdk = null;
   let app = null;
   let auth = null;
@@ -124,6 +127,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
   let freshAfterDelete = null; // the deleted uid this tab has already started fresh for
   let afterDelete = false; // a push is waiting for this tab to see the player after a delete
   let feedbackSent = null; // { uid, at }: the last feedback this tab sent, to answer "too soon" offline
+  let reauthUid = null; // a Google player whose data is deleted, but not yet the sign-in (see deleteEverything)
 
   // ---------------------------------------------------------------- status
 
@@ -170,7 +174,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
   function refreshAccount() {
     const user = auth && auth.currentUser;
     const anonymous = !user || user.isAnonymous;
-    setStatus({ ready: isReady(), isAnonymous: anonymous, accountName: anonymous ? null : accountName(user) });
+    setStatus({ ready: isReady(), isAnonymous: anonymous, accountName: anonymous ? null : accountName(user), needsReauth: pendingDelete(user) });
   }
 
   // ---------------------------------------------------------------- helpers
@@ -255,6 +259,19 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     }
   }
 
+  // A player whose saved data "Delete my saved data" removed: nothing may be
+  // written as it again. Mostly the localStorage marker, which the game's
+  // other tabs and a reload see too; reauthUid covers a browser without it.
+  function isGone(id) {
+    return !!id && (id === deletedUid() || id === reauthUid);
+  }
+
+  // Signed in to a Google account whose saved data is deleted, while its
+  // sign-in waits for reauthAndDelete() (status.needsReauth).
+  function pendingDelete(user = auth && auth.currentUser) {
+    return !!user && !user.isAnonymous && isGone(user.uid);
+  }
+
   function markDeleted(id) {
     try {
       if (!storage) return;
@@ -309,7 +326,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
       // The player that replaced one deleted in another tab has reached this
       // tab: the push that waited for it (see waitForNewPlayer) goes now.
       const id = uid();
-      if (afterDelete && id && id !== deletedUid() && started && !held) {
+      if (afterDelete && id && !isGone(id) && started && !held) {
         afterDelete = false;
         schedulePush();
       }
@@ -437,7 +454,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     if (!user || !local) return false;
     // One uid for the whole push, even if another tab changes it meanwhile.
     const me = user.uid;
-    if (me === deletedUid()) return waitForNewPlayer();
+    if (isGone(me)) return waitForNewPlayer();
     const ref = playerRef(me);
     dirty = false;
     setStatus({ state: 'syncing' });
@@ -462,7 +479,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
           if (!err || err.code !== NOTHING_NEW) throw err;
         }),
       );
-      if (me === deletedUid()) {
+      if (isGone(me)) {
         // Deleted in another tab while this push was on its way: take back
         // what it may have written (this tab can still act as that player)
         // and keep none of it here.
@@ -725,6 +742,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
       // Back into an account whose data was deleted here earlier (its Google
       // sign-in was kept): on purpose this time, so it may sync again.
       if (uid() === deletedUid()) markDeleted(null);
+      if (uid() === reauthUid) reauthUid = null;
       refreshAccount();
       await pushNow();
       return { ok: true, switched: true };
@@ -811,7 +829,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
         const user = auth.currentUser;
         me = user.uid;
         // deleted in another tab (see pushNow): the next push, as the new player, sends the reset
-        if (me === deletedUid()) return { ok: false, error: 'offline' };
+        if (isGone(me)) return { ok: false, error: 'offline' };
         const ref = playerRef(me);
         setStatus({ state: 'syncing' });
         let written = null;
@@ -887,7 +905,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
         if (!(await ensureReady())) return { ok: false, error: 'offline' };
         me = uid();
         // deleted in another tab: this uid is on its way out (see pushNow)
-        if (!me || me === deletedUid()) return { ok: false, error: 'offline' };
+        if (!me || isGone(me)) return { ok: false, error: 'offline' };
         if (feedbackSent && feedbackSent.uid === me && now() - feedbackSent.at < FEEDBACK_GAP_MS) {
           return { ok: false, error: 'too-soon' };
         }
@@ -937,13 +955,45 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     }
   }
 
+  // The player's feedback, board entry and cloud save, in that order (see
+  // deleteFeedback for why the feedback goes first).
+  async function deleteCloudDocs(me) {
+    await deleteFeedback(me);
+    forgetBoard(); // if only one delete lands, the next push posts the entry again
+    await withTimeout(Promise.all([sdk.deleteDoc(boardRef(me)), sdk.deleteDoc(playerRef(me))]));
+  }
+
+  // After a delete this device carries on as a new guest, whose save then
+  // syncs. If signing in fails, we are signed out with a fresh save, and the
+  // next trigger tries again.
+  async function carryOnAsGuest(fresh) {
+    try {
+      if (fresh) applySave(freshSave());
+      dirty = true;
+      refreshAccount();
+      if (await ensureReady()) await pushNow();
+    } catch (err) {
+      // The cloud copy is already gone; the next trigger syncs the rest.
+      dirty = true;
+      console.warn('[cloud] starting fresh after the delete failed', errorText(err));
+    }
+  }
+
   // "Delete my saved data" (docs/CLOUD.md, Round 2). Any feedback, the board
   // entry and the cloud save go first, and only once all are gone does this
   // device forget its progress, so a failure changes nothing and the player
   // can try again.
-  // Resolves { ok, accountDeleted?, error? }. accountDeleted is false when
-  // Firebase kept the sign-in itself (deleting a Google sign-in needs a fresh
-  // one, auth/requires-recent-login), and then we just sign out of it.
+  // Resolves { ok, accountDeleted?, guest?, needsReauth?, error? }:
+  // - { ok: true, accountDeleted: true }: everything is gone, sign-in too.
+  // - { ok: false, needsReauth: true }: the data is gone and this device has
+  //   started fresh, but Firebase wants a fresh Google sign-in before it
+  //   deletes a Google one (auth/requires-recent-login). The player stays
+  //   signed in, nothing syncs, and status.needsReauth is true until
+  //   reauthAndDelete() (a tap on "Confirm with Google") finishes it.
+  // - { ok: true, accountDeleted: false }: Firebase kept a sign-in we could
+  //   not ask about again, so we signed out of it: a guest's (`guest: true`,
+  //   only the random player ID), or a Google one Firebase had already
+  //   signed out by itself.
   function deleteEverything() {
     if (!enabled) return Promise.resolve({ ok: false, error: 'cloud-off' });
     clearDebounce();
@@ -953,9 +1003,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
         if (!(await ensureReady())) return { ok: false, error: status.error || 'offline' };
         me = uid();
         setStatus({ state: 'syncing' });
-        await deleteFeedback(me);
-        forgetBoard(); // if only one delete lands, the next push posts the entry again
-        await withTimeout(Promise.all([sdk.deleteDoc(boardRef(me)), sdk.deleteDoc(playerRef(me))]));
+        await deleteCloudDocs(me);
       } catch (err) {
         dirty = true;
         fail(err);
@@ -968,12 +1016,31 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
       lastSynced = null;
       freshAfterDelete = me; // this tab starts fresh just below
       markDeleted(me);
+      const user = auth.currentUser;
       let accountDeleted = false;
       try {
-        await withTimeout(sdk.deleteUser(auth.currentUser));
+        await withTimeout(sdk.deleteUser(user));
         accountDeleted = true;
       } catch (err) {
-        console.warn('[cloud] could not delete the sign-in, signing out instead', errorText(err));
+        // A Google sign-in holds a grown-up's email, name and photo, so it is
+        // never left behind quietly. Firebase often wants a fresh Google
+        // sign-in first, and only a tap can open that popup: so this device
+        // starts fresh now and stays signed in, writing nothing as this
+        // player (isGone), until reauthAndDelete() finishes the job.
+        if (user && !user.isAnonymous && uid() === me) {
+          console.warn('[cloud] the Google sign-in needs confirming before it can be deleted', errorText(err));
+          reauthUid = me;
+          applySave(freshSave());
+          dirty = true;
+          afterDelete = true; // a new guest from another tab syncs this one too
+          refreshAccount();
+          setStatus({ state: 'connecting', error: null });
+          return { ok: false, needsReauth: true, error: errorText(err) };
+        }
+        // Deleted already, a guest's sign-in (nothing but the random player
+        // ID) or one Firebase signed out by itself: signing out is all we can do.
+        accountDeleted = String(err && err.code) === 'auth/user-not-found';
+        if (!accountDeleted) console.warn('[cloud] could not delete the sign-in, signing out instead', errorText(err));
         try {
           await withTimeout(sdk.signOut(auth));
         } catch (again) {
@@ -984,20 +1051,73 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
       // Still this player after all: other tabs have started fresh by now, and
       // from here on pushes as it carry fresh saves only.
       if (uid() === me) markDeleted(null);
-      try {
-        applySave(freshSave());
-        dirty = true;
-        refreshAccount();
-        // A new anonymous player, whose fresh save then syncs. If that fails we
-        // are signed out with a fresh save, and the next trigger tries again.
-        if (await ensureReady()) await pushNow();
-      } catch (err) {
-        // The cloud copy is already gone; the next trigger syncs the rest.
-        dirty = true;
-        console.warn('[cloud] starting fresh after the delete failed', errorText(err));
-      }
-      return { ok: true, accountDeleted };
+      await carryOnAsGuest(true);
+      return accountDeleted ? { ok: true, accountDeleted } : { ok: true, accountDeleted, guest: !user || !!user.isAnonymous };
     });
+  }
+
+  function googleEmail(user) {
+    const google = (user.providerData || []).find((p) => p && p.providerId === 'google.com');
+    return user.email || (google && google.email) || null;
+  }
+
+  // A failed or cancelled confirmation, sorted like linkFailure, plus
+  // 'wrong-account' for another Google account than the one signed in.
+  // needsReauth says whether the sign-in still waits to be deleted.
+  function reauthFailure(err) {
+    const res = linkFailure(err);
+    if (String((err && err.code) || '') === 'auth/user-mismatch') res.reason = 'wrong-account';
+    return { ...res, needsReauth: pendingDelete() };
+  }
+
+  // With a fresh Google sign-in, deleteUser goes through. The docs go again
+  // first: another device signed in to this account may have synced since.
+  async function finishDelete(me) {
+    if (disposed || uid() !== me || !pendingDelete()) return { ok: false, error: 'not-pending', needsReauth: pendingDelete() };
+    try {
+      setStatus({ state: 'syncing' });
+      await deleteCloudDocs(me);
+      await withTimeout(sdk.deleteUser(auth.currentUser));
+    } catch (err) {
+      fail(err);
+      refreshAccount();
+      return { ok: false, needsReauth: pendingDelete(), reason: isOffline(err) ? 'offline' : 'failed', error: errorText(err) };
+    }
+    reauthUid = null;
+    afterDelete = false; // this tab syncs the new guest itself, just below
+    // The save started fresh when the data was deleted; anything played
+    // since is new, and goes with the new guest.
+    await carryOnAsGuest(false);
+    return { ok: true, accountDeleted: true };
+  }
+
+  // "Confirm with Google to finish deleting" (status.needsReauth). Call it
+  // straight from the tap, like linkGoogle: reauthenticateWithPopup runs
+  // before any await, as Safari only opens a popup in the tap's own task.
+  // Then the docs (again), the sign-in, and a new guest for this device.
+  // Resolves { ok, accountDeleted?, needsReauth?, cancelled?, reason?, error? }
+  // and never rejects; `reason` is as in linkGoogle, or 'wrong-account'.
+  function reauthAndDelete() {
+    if (!enabled) return Promise.resolve({ ok: false, error: 'cloud-off' });
+    let user = null;
+    let popup;
+    try {
+      user = isReady() ? auth.currentUser : null;
+      if (!user) return Promise.resolve({ ok: false, reason: 'not-ready', error: 'not-ready' });
+      // never deletes a Google account that didn't ask for it
+      if (!pendingDelete(user)) return Promise.resolve({ ok: false, error: 'not-pending', needsReauth: false });
+      const provider = new sdk.GoogleAuthProvider();
+      // the account this game is signed in with, picked already
+      const email = googleEmail(user);
+      provider.setCustomParameters(email ? { login_hint: email } : { prompt: 'select_account' });
+      popup = reauthWith(sdk, user, provider);
+    } catch (err) {
+      popup = Promise.reject(err);
+    }
+    const me = user && user.uid;
+    return Promise.resolve(popup)
+      .then(() => exclusive(() => finishDelete(me)), reauthFailure)
+      .catch(reauthFailure);
   }
 
   // Options are read inside, so a bad argument can't reject the promise.
@@ -1098,6 +1218,7 @@ export function createCloud({ getSave, replaceSave, onStatus } = {}, options = {
     signOutToFresh,
     resetEverywhere,
     deleteEverything,
+    reauthAndDelete,
     sendFeedback,
     getLeaderboard,
     setProfile,

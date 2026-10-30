@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { linkWithCredential } from 'firebase/auth';
+import { linkWithCredential, reauthenticateWithCredential } from 'firebase/auth';
 import { createCloud } from '../src/cloud/cloud.js';
 import * as firebaseSdk from '../src/cloud/firebase-sdk.js';
 import { toCloudSave, boardScores, ensureProfile } from '../src/cloud/merge.js';
@@ -52,7 +52,8 @@ function makeSave(over = {}) {
   return ensureProfile(save, Math.random);
 }
 
-function device(name, save, googleSub = 'pip-google', googleName = 'Pip Penguin') {
+// `extra` adds createCloud options (a wrapped SDK, a stand-in re-auth popup).
+function device(name, save, googleSub = 'pip-google', googleName = 'Pip Penguin', extra = {}) {
   const d = { save: structuredClone(save), replaced: 0, statuses: [] };
   d.cloud = createCloud(
     {
@@ -70,6 +71,7 @@ function device(name, save, googleSub = 'pip-google', googleName = 'Pip Penguin'
       persistence: 'memory',
       appName: name,
       linkWith: (sdk, user) => linkGoogleToken(sdk, user, googleToken(googleSub, googleName)),
+      ...extra,
     },
   );
   devices.push(d);
@@ -360,7 +362,7 @@ describe('leaderboard on the emulators', () => {
 
 describe('Firestore Lite, unchanged pushes and deleting data on the emulators', () => {
   it('the game\'s SDK slice is Firestore Lite, with no cache or listeners', () => {
-    for (const name of ['getDoc', 'getDocs', 'getCount', 'setDoc', 'deleteDoc', 'runTransaction', 'writeBatch', 'deleteUser', 'linkWithPopup']) {
+    for (const name of ['getDoc', 'getDocs', 'getCount', 'setDoc', 'deleteDoc', 'runTransaction', 'writeBatch', 'deleteUser', 'linkWithPopup', 'reauthenticateWithPopup']) {
       expect(firebaseSdk[name], name).toBeTypeOf('function');
     }
     for (const name of ['getDocFromServer', 'getDocsFromServer', 'getCountFromServer', 'onSnapshot']) {
@@ -429,6 +431,74 @@ describe('Firestore Lite, unchanged pushes and deleting data on the emulators', 
     expect(d.cloud.uid).not.toBe(googleUid);
     expect(d.cloud.status).toMatchObject({ isAnonymous: true, accountName: null, ready: true });
     expect(d.save.totalPresents).toBe(0);
+  });
+});
+
+describe('finishing a delete with a fresh Google sign-in on the emulators', () => {
+  // The auth emulator deletes any account at once, so this SDK refuses to
+  // delete a Google one until it has been confirmed again, as production
+  // does once the sign-in is more than a few minutes old.
+  function staleSdk() {
+    const confirmed = new Set();
+    const sdk = {
+      ...firebaseSdk,
+      deleteUser: (user) =>
+        user.isAnonymous || confirmed.has(user.uid)
+          ? firebaseSdk.deleteUser(user)
+          : Promise.reject(Object.assign(new Error('Firebase: Error (auth/requires-recent-login).'), { code: 'auth/requires-recent-login' })),
+    };
+    return { sdk, confirmed };
+  }
+
+  it('keeps the Google sign-in until it is confirmed with the same account, then deletes it', async () => {
+    // someone else's Google account, which the wrong pick below lands on
+    const other = device('otherGoogle', makeSave({ totalPresents: 2 }), 'someone-else-google', 'Ivy Otherone');
+    expect(await other.cloud.start()).toBe(true);
+    expect((await other.cloud.linkGoogle()).ok).toBe(true);
+
+    const { sdk, confirmed } = staleSdk();
+    let pick = 'stale-google'; // which Google account the stand-in popup signs in with
+    const d = device('staleGoogle', makeSave({ totalPresents: 44, bestPresentsInNight: 9, foundJokes: ['j005'] }), 'stale-google', 'Holly Grownup', {
+      loadFirebase: async () => sdk,
+      reauthWith: async (s, user) => {
+        await reauthenticateWithCredential(user, s.GoogleAuthProvider.credential(googleToken(pick, 'Holly Grownup')));
+        confirmed.add(user.uid);
+      },
+    });
+    expect(await d.cloud.start()).toBe(true);
+    expect(await d.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
+    const googleUid = d.cloud.uid;
+    expect(await d.cloud.sendFeedback({ rating: 4, category: 'bug', quick: ['broke'] })).toEqual({ ok: true });
+
+    expect(await d.cloud.deleteEverything()).toEqual({ ok: false, needsReauth: true, error: 'auth/requires-recent-login' });
+    expect(await readDoc(`players/${googleUid}`)).toBeNull();
+    expect(await readDoc(`leaderboard/${googleUid}`)).toBeNull();
+    expect(await readDoc(`feedbackLimits/${googleUid}`)).toBeNull();
+    expect(await accountExists(googleUid)).toBe(true);
+    expect(d.cloud.uid).toBe(googleUid);
+    expect(d.cloud.status).toMatchObject({ needsReauth: true, isAnonymous: false, accountName: 'Holly' });
+    expect(d.save).toMatchObject({ totalPresents: 0, foundJokes: [] });
+    // Nothing is written as the deleted player while it waits.
+    d.save.nights = 1;
+    expect(await d.cloud.markDirty({ now: true })).toBe(false);
+    expect(await readDoc(`players/${googleUid}`)).toBeNull();
+
+    // Another Google account in the popup: Firebase refuses, nothing changes.
+    pick = 'someone-else-google';
+    expect(await d.cloud.reauthAndDelete()).toMatchObject({ ok: false, reason: 'wrong-account', needsReauth: true, error: 'auth/user-mismatch' });
+    expect(await accountExists(googleUid)).toBe(true);
+    expect(await accountExists(other.cloud.uid)).toBe(true);
+    expect(d.cloud.uid).toBe(googleUid);
+
+    pick = 'stale-google';
+    expect(await d.cloud.reauthAndDelete()).toEqual({ ok: true, accountDeleted: true });
+    expect(await accountExists(googleUid)).toBe(false);
+    expect(d.cloud.uid).not.toBe(googleUid);
+    expect(d.cloud.status).toMatchObject({ needsReauth: false, isAnonymous: true, accountName: null, state: 'synced' });
+    expect((await readDoc(`players/${d.cloud.uid}`)).save).toEqual(toCloudSave(d.save));
+    expect(d.save).toMatchObject({ totalPresents: 0, nights: 1 }); // played since the delete: kept
+    expect(await readDoc(`players/${googleUid}`)).toBeNull();
+    expect(await readDoc(`players/${other.cloud.uid}`)).not.toBeNull();
   });
 });
 

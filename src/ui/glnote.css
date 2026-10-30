@@ -1,0 +1,106 @@
+/* "Pip's island needs 3D graphics" and "Tap to reload" (glnote.js): a paper
+   card on the night sky, over everything, in the menus' style. */
+
+.glnote {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: max(16px, var(--safe-top)) max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
+  background: radial-gradient(120% 95% at 50% 30%, #30408c 0%, var(--night) 45%, var(--night-deep) 100%);
+  font-family: var(--font);
+  color: var(--ink);
+  user-select: text;
+  animation: glnote-in 0.35s ease-out backwards;
+}
+
+.glnote__card {
+  width: min(440px, 100%);
+  padding: 26px 22px 24px;
+  border: 3px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+/* candy-stripe ribbon, like the menus' cards */
+.glnote__card::before {
+  content: '';
+  display: block;
+  height: 10px;
+  margin: -26px -22px 18px;
+  border-bottom: 3px solid var(--ink);
+  border-radius: calc(var(--radius) - 3px) calc(var(--radius) - 3px) 0 0;
+  background: var(--candy-stripe);
+}
+
+.glnote__icon {
+  font-size: 3.2rem;
+  line-height: 1;
+  animation: glnote-bob 2.4s ease-in-out infinite;
+}
+
+.glnote__title {
+  margin: 12px 0 8px;
+  font-size: clamp(1.4rem, 5.5vw, 1.8rem);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.glnote__text {
+  margin: 0 0 20px;
+  color: var(--ink-soft);
+  font-size: 1.05rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.glnote__btn {
+  min-height: 48px;
+  padding: 0.55em 1.4em 0.6em;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff6d79, var(--red) 62%);
+  box-shadow:
+    inset 0 -4px 0 var(--red-dark),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    0 5px 0 var(--ink);
+  color: #fff;
+  font: 600 1.08rem/1.1 var(--font);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.18);
+}
+
+.glnote__btn:active {
+  translate: 0 4px;
+  box-shadow:
+    inset 0 -2px 0 var(--red-dark),
+    inset 0 3px 0 rgba(255, 255, 255, 0.35),
+    0 1px 0 var(--ink);
+}
+
+.glnote__btn:focus-visible {
+  outline: 4px solid var(--gold);
+  outline-offset: 3px;
+}
+
+@keyframes glnote-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes glnote-bob {
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glnote,
+  .glnote__icon {
+    animation: none;
+  }
+}
