@@ -86,8 +86,8 @@ First release on Google Play: the full game, with 102 jokes to collect, 12 prese
 ## Contact details (Grow users > Store presence > Store settings > Contact details)
 
 - **Email (required, shown publicly on the listing):** the address in
-  `PRIVACY_CONTACT` (`src/cloud/config.js`). It stays as it is, so the
-  listing, the game and the privacy pages all agree.
+  `PRIVACY_CONTACT` (`src/cloud/config.js`): PipsChristmasEveHunt@proton.me, so
+  the listing, the game and the privacy pages all agree.
 - **Website (optional):** `https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/`
 - **Phone (optional):** leave empty. A trader on a personal account has to
   give one (`play/README.md`, Phase 5, step 4).

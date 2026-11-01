@@ -21,19 +21,13 @@ the app controls, and the app is our own site in Chrome.
       https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/delete-data.html#some.
       That part must be deployed before you answer the partial-deletion
       question below.
-- [ ] "Delete my saved data" really deletes a Google player's sign-in. The
-      "Confirm with Google" step for `auth/requires-recent-login` is live, but
-      it has only been tested against the emulators. **Test it before you
-      submit this form**, in the Play app, with a throwaway test Google
-      account (never your own; see Sign-in details in `content-rating.md`).
-      Sign in, send one feedback message, wait over 5 minutes, delete, then
-      Confirm with Google. In the Firebase console, check that the
-      Authentication user, `players/{uid}`, `leaderboard/{uid}`, that player's
-      `feedback` documents and `feedbackLimits/{uid}` are gone. Also run the
-      guest check in `docs/CLOUD.md` ("Check on the real project before
-      release"). Until then the answer "Yes, users can delete their account"
-      rests on emulator tests. The Google account itself stays, so the same
-      test account can then go to Google's reviewers.
+- [x] "Delete my saved data" really deletes a Google player's sign-in. Tested in
+      the Play app on 1 November 2026 with a throwaway test Google account: sign
+      in, wait over 5 minutes, delete, Confirm with Google. It ended with "All
+      deleted". The answer "Yes, users can delete their account" rests on this.
+      The Google account itself stays, so the same test account can go to
+      Google's reviewers. Optional: the guest check in `docs/CLOUD.md` ("Check on
+      the real project before release"). The public pages hold either way.
 
 ## Step 1: Overview
 

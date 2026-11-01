@@ -18,7 +18,7 @@ export const FIREBASE_CONFIG = {
 // Where grown-ups can ask about, or ask us to delete, their saved data. The
 // privacy screen shows it (an email address becomes a mailto: link, a web page
 // opens in a new tab). The owner may change it at any time.
-export const PRIVACY_CONTACT = 'keithstack1@gmail.com';
+export const PRIVACY_CONTACT = 'PipsChristmasEveHunt@proton.me';
 
 export const EMULATOR_PROJECT_ID = 'demo-pips-hunt';
 export const EMULATOR_AUTH_URL = 'http://127.0.0.1:9099';

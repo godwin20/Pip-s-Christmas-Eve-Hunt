@@ -131,7 +131,7 @@ describe('Delete your data', () => {
     expect(some).toContain('Your snow name stays.');
     expect(some).toContain('This deletes your entry.');
     expect(some).toContain('Just your feedback or a note:');
-    expect(deletePage).toContain('mailto:keithstack1@gmail.com?subject=Delete%20my%20feedback');
+    expect(deletePage).toContain('mailto:PipsChristmasEveHunt@proton.me?subject=Delete%20my%20feedback');
   });
 
   it('says what to do first on other devices, and after signing out', () => {

@@ -505,8 +505,8 @@ Under the list, "📄 Read the full privacy policy" opens `privacy.html` in a
 new tab (only with a cloud: the policy describes the game with one).
 
 `PRIVACY_CONTACT` is a constant in `src/cloud/config.js`: an email address
-(shown as a mailto: link) or a web page. It is currently the owner's email,
-which they plan to change later.
+(shown as a mailto: link) or a web page. It is currently the game's own
+mailbox, PipsChristmasEveHunt@proton.me.
 
 ### Public privacy pages (Google Play)
 `public/privacy.html` ("Privacy policy") and `public/delete-data.html`

@@ -90,8 +90,8 @@ app is a bonus, not a blocker.
 | When | Step | Who |
 |---|---|---|
 | Done | Phases 1 to 4: Play Console account, Bubblewrap build, keystore backup, the user-site repo, the app, the internal test, Play's fingerprints | OWNER |
-| Mon 2 – Wed 4 Nov | Phase 0 leftovers: deploy the web changes, test deletion. Then Phase 5: store listing and App content. Send the closed release for review (aim for Wed 4 Nov, Fri 6 Nov at the latest) | OWNER |
-| By Wed 11 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
+| Done, Sun 1 Nov | Phase 5: store listing and App content. Closed release sent for review | OWNER |
+| By about Sun 8 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
 | By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
 | Opt-in date + 14 days, Fri 27 Nov at the latest | Phase 7: apply for production (review usually 7 days or less) | OWNER |
 | By Fri 4 Dec | Production access granted. Phase 8: production release, sent for review | OWNER |
@@ -137,7 +137,7 @@ Your contact email and phone for Google stay private if you declare as a
 phone number, and your address is shown publicly too (Phase 5, step 4).
 
 **The public email address** is the game's `PRIVACY_CONTACT`
-(`src/cloud/config.js`), and it stays as it is. Use the same address for the
+(`src/cloud/config.js`): PipsChristmasEveHunt@proton.me. Use the same address for the
 app's support email (Store settings), the IARC rating email and the testers'
 feedback address, so everything agrees. The only way to avoid showing your
 legal name is an organisation account, which needs a registered organisation
@@ -145,18 +145,14 @@ and a D-U-N-S number: not worth it here.
 
 ## Phase 0: the game side, before testers see it
 
-- [ ] **Delete for Google players (code live; OWNER: still to test).** When
-      Firebase says `auth/requires-recent-login`, the game asks a grown-up to
-      "Confirm with Google", so the Firebase Authentication record (email,
-      name, photo, Google account ID) really goes, instead of only signing out. It has only been
-      tested against the emulators. Before you submit the Data safety form,
-      test it in the Play app with a throwaway test Google account, never your
-      own: sign in, send one feedback message, wait over 5 minutes, delete,
-      Confirm with Google, then check the Firebase console. The steps are at
-      the top of `data-safety.md`. Play's account deletion rule and the Data
-      safety answers depend on it.
-- [ ] **Privacy and delete pages (live; OWNER: review, commit and deploy the
-      latest changes before Phase 5).** `public/privacy.html` and
+- [x] **Delete for Google players (tested).** When Firebase says
+      `auth/requires-recent-login`, the game asks a grown-up to "Confirm with
+      Google", so the Firebase Authentication record (email, name, photo, Google
+      account ID) really goes, instead of only signing out. Tested in the Play
+      app on 1 November 2026 with a throwaway test Google account: it ended
+      with "All deleted". Play's account deletion rule and the Data safety
+      answers depend on it.
+- [ ] **Privacy and delete pages (live).** `public/privacy.html` and
       `public/delete-data.html` are at
       https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/privacy.html and
       `.../delete-data.html`, with the in-game Privacy screen linking to the
@@ -169,7 +165,8 @@ and a D-U-N-S number: not worth it here.
       hand (Firestore's automatic TTL needs the paid plan). It's a "may", so
       nothing is promised; if you'd like to do it, ASSISTANT can write a
       script you run once a year.
-- [x] **PRIVACY_CONTACT (OWNER decision).** It stays as it is.
+- [x] **PRIVACY_CONTACT (OWNER decision).** PipsChristmasEveHunt@proton.me, live
+      on the game and both policy pages since 1 November 2026.
 - [x] **Neutral age screen (live).** For
       mixed-audience apps the Families policy allows services that aren't
       approved for children (here: Google sign-in) only behind a *neutral age
