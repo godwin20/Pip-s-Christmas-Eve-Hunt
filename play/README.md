@@ -4,17 +4,17 @@ The Android app is a **Trusted Web Activity (TWA)**: a small Android wrapper,
 made with Bubblewrap 1.27.0, that opens
 https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/ full screen in Chrome,
 with no address bar. The game stays the web game. This folder is everything
-else Google Play needs, as a checklist from today (Friday 30 October 2026) to
-production.
+else Google Play needs, as a checklist through to production. Phases 1 to 4
+are done.
 
 | File | What it is |
 |---|---|
 | `README.md` | This checklist, the Bubblewrap answer sheet, and how later releases work |
 | `data-safety.md` | Every answer for the Data safety form |
 | `content-rating.md` | The IARC questionnaire, target audience, and the other App content declarations |
-| `testers.md` | The closed test: Google Group, invitation, what testers check |
+| `testers.md` | The closed test: paid testers through PrimeTestLab, the Google Group route for friends and family, the invitation, what testers check |
 | `user-site/` | The files for the new `godwin20/godwin20.github.io` repo (the `assetlinks.json` that removes the address bar) |
-| `store/` | Store listing texts and graphics (a separate task) |
+| `store/` | Store listing texts and graphics |
 
 **Who does what.** **OWNER** is you: accounts, payment, ID, the keystore and
 its passwords, every Play Console click, and pushing to GitHub. **ASSISTANT**
@@ -26,7 +26,7 @@ the real Firebase project.
 
 | | |
 |---|---|
-| Package name (application ID) | `io.github.godwin20.pipshunt`. Permanent once the first bundle is uploaded. |
+| Package name (application ID) | `io.github.godwin20.pipshunt`. Permanent from **Create app**. |
 | App name / name under the icon | Pip's Christmas Eve Hunt / Pip's Hunt |
 | Origin the app trusts | `https://godwin20.github.io` (the whole origin) |
 | Start URL | `/Pip-s-Christmas-Eve-Hunt/` |
@@ -47,14 +47,17 @@ with a link to the Play for Families policies. It has been in Bubblewrap
 since 2021 and is still in 1.27.0.
 
 The maintainers' reason is a Families policy rule. Today's text says an app
-for children "must not merely provide a webview of a website". Pip's hunt is
-a full game: it installs, plays offline after the first launch, has no
-browser bar, and the site is ours. That's a good case that it isn't "merely"
-a website, but a reviewer may still reject it.
+for children "must not merely provide a webview of a website", and the same
+sentence goes on to mention affiliate traffic and the website owner's or
+administrator's permission. It isn't clear whether the permission wording
+covers webviews or only the affiliate traffic. Pip's hunt is a full game: it
+installs, plays offline after the first launch, has no browser bar, and the
+site is ours. That's a good case that it isn't "merely" a website, but a
+reviewer may still reject it.
 
 **When we find out:** at the review of the first closed-testing release
-(around 4–11 November), because that review covers the target audience. That
-is early enough to change plan.
+(by about 11–13 November), because that review covers the target audience.
+That is early enough to change plan.
 
 **Making a rejection less likely:**
 
@@ -68,8 +71,9 @@ is early enough to change plan.
 **If it is rejected anyway:**
 
 1. Appeal from the rejection email or Play Console's policy status page:
-   it's our own site, a complete offline-capable game, verified with Digital
-   Asset Links.
+   it's a complete offline-capable game, verified with Digital Asset Links.
+   We own and administer the site, and the policy's wording is about use
+   without the owner's permission.
 2. Plan B (ASSISTANT, several days): ship the built game inside the app
    (for example with Capacitor), so it runs from files in the APK instead of
    from a website. Google blocks its sign-in inside embedded WebViews, so
@@ -80,31 +84,36 @@ is early enough to change plan.
 
 ## Timeline
 
-Christmas is Friday 25 December, 8 weeks away. The web game is already live,
-so the Play app is a bonus, not a blocker.
+Christmas is Friday 25 December. The web game is already live, so the Play
+app is a bonus, not a blocker.
 
 | When | Step | Who |
 |---|---|---|
-| Fri 30 Oct – Sun 1 Nov | Phase 1: public email address; Play Console account, US$25, identity and device verification | OWNER |
-| Fri 30 Oct – Tue 3 Nov | Phase 0: finish the game-side gaps | ASSISTANT, then OWNER reviews and pushes |
-| from Fri 30 Oct | Recruit 15–20 testers, make the Google Group (`testers.md`) | OWNER |
-| Sat 31 Oct – Mon 2 Nov | Phases 2–3: Bubblewrap build, keystore backup, the user-site repo | OWNER |
-| as soon as Google verifies you (allow up to a week; I found no official time) | Phase 4: create the app, internal test, add Play's fingerprints | OWNER |
-| Wed 4 – Fri 6 Nov | Phase 5: store listing and App content; send the first closed release for review | OWNER |
-| about Mon 9 – Wed 11 Nov | Closed release approved (new accounts: up to 7 days, sometimes more); send the opt-in link; testers opt in the same day | OWNER, testers |
-| Tue 24 Nov (if the 12th tester opted in on Tue 10 Nov) | 14 days done. Phase 7: Apply for production (review usually 7 days or less) | OWNER |
-| about Tue 1 – Wed 2 Dec | Production access granted; Phase 8: production release, sent for review | OWNER |
-| about Mon 7 – Fri 11 Dec | Live on Google Play, two weeks before Christmas | |
+| Done | Phases 1 to 4: Play Console account, Bubblewrap build, keystore backup, the user-site repo, the app, the internal test, Play's fingerprints | OWNER |
+| Mon 2 – Wed 4 Nov | Phase 0 leftovers: deploy the web changes, test deletion. Then Phase 5: store listing and App content. Send the closed release for review (aim for Wed 4 Nov, Fri 6 Nov at the latest) | OWNER |
+| By Wed 11 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
+| By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
+| Opt-in date + 14 days, Fri 27 Nov at the latest | Phase 7: apply for production (review usually 7 days or less) | OWNER |
+| By Fri 4 Dec | Production access granted. Phase 8: production release, sent for review | OWNER |
+| By Fri 11 Dec | Live on Google Play, which leaves 14 days for one rejection | |
 
-**The latest safe date** to have 12 testers opted in is about **Friday 13
-November**: 14 days takes you to 27 November, then up to a week for
-production access and up to a week for the release review lands around 11
-December, with no slack for a rejection.
+**Latest safe dates:** send the closed release for review by **Fri 6 Nov**
+(aim for Wed 4 Nov, so testers have two days to opt in), 12th tester opted in
+by **Fri 13 Nov**, apply for production by **Fri 27 Nov**, send the production
+release for review by **Fri 4 Dec**, live by **Fri 11 Dec**. That leaves 14
+days for one rejection.
+
+**Absolute last dates, with no room to slip:** send the closed release Thu 19
+Nov, 12th tester Thu 26 Nov, apply Thu 10 Dec, send the production release Thu
+17 Dec, live Thu 24 Dec.
 
 ## Costs
 
 - **US$25**, once, for the Google Play developer account (credit or debit
   card in your legal name; Google doesn't take prepaid cards).
+- **About US$28**, once, for 25 testers from PrimeTestLab: the plan is listed
+  at US$27.99, plus a service fee the page describes unclearly, so check the
+  total at checkout (`testers.md`).
 - Everything else here is free: Bubblewrap, the JDK and Android SDK it
   downloads, GitHub Pages, Firebase Spark, Google Groups. A free app needs no
   merchant account.
@@ -118,50 +127,50 @@ For a personal account, Google verifies and then **shows on the store
 listing**:
 
 - your **legal name** (as on your ID);
-- your **country** (from your legal address; the address itself isn't shown
-  for personal accounts);
+- your **country** (from your legal address; the address itself is shown
+  only if you declare as a trader);
 - your **developer email address**, public, for anyone to write to;
 - optionally a website.
 
-Your contact email and phone for Google stay private. Personal accounts don't
-have to show a phone number.
+Your contact email and phone for Google stay private if you declare as a
+**non-trader**. If you declare as a **trader**, a personal account must show a
+phone number, and your address is shown publicly too (Phase 5, step 4).
 
-**Use a dedicated public email address** rather than your personal Gmail,
-for example a new Gmail account just for the game (you create it; Claude
-can't). Use it as the developer email, the app's support email (Store
-settings), the IARC rating email and the testers' feedback address. It is
-also worth making it the game's `PRIVACY_CONTACT` (`src/cloud/config.js`,
-your choice), so your personal address stops being public in the game and
-on the privacy pages. The only way to avoid showing your legal name is an
-organisation account, which needs a registered organisation and a D-U-N-S
-number: not worth it here.
+**The public email address** is the game's `PRIVACY_CONTACT`
+(`src/cloud/config.js`), and it stays as it is. Use the same address for the
+app's support email (Store settings), the IARC rating email and the testers'
+feedback address, so everything agrees. The only way to avoid showing your
+legal name is an organisation account, which needs a registered organisation
+and a D-U-N-S number: not worth it here.
 
 ## Phase 0: the game side, before testers see it
 
-- [ ] **Delete for Google players (ASSISTANT: done in the working tree,
-      tested against the emulators; OWNER: review, commit, deploy).** When
-      Firebase says `auth/requires-recent-login`, the game now asks a
-      grown-up to "Confirm with Google", so the Firebase Authentication
-      record (email, name, photo) really goes, instead of only signing out.
-      Deploy it before the closed test, then try it once on the real project
-      with a Google account signed in more than 5 minutes earlier: Play's
-      account deletion rule and the Data safety answers depend on it.
-- [ ] **Privacy and delete pages (ASSISTANT: done in the working tree;
-      OWNER: review, commit, deploy).**
-      `public/privacy.html` and `public/delete-data.html`, deployed to
+- [ ] **Delete for Google players (code live; OWNER: still to test).** When
+      Firebase says `auth/requires-recent-login`, the game asks a grown-up to
+      "Confirm with Google", so the Firebase Authentication record (email,
+      name, photo, Google account ID) really goes, instead of only signing out. It has only been
+      tested against the emulators. Before you submit the Data safety form,
+      test it in the Play app with a throwaway test Google account, never your
+      own: sign in, send one feedback message, wait over 5 minutes, delete,
+      Confirm with Google, then check the Firebase console. The steps are at
+      the top of `data-safety.md`. Play's account deletion rule and the Data
+      safety answers depend on it.
+- [ ] **Privacy and delete pages (live; OWNER: review, commit and deploy the
+      latest changes before Phase 5).** `public/privacy.html` and
+      `public/delete-data.html` are at
       https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/privacy.html and
       `.../delete-data.html`, with the in-game Privacy screen linking to the
-      policy (Play wants it linked in the app too). Check both URLs answer 200
-      before Phase 5.
+      policy (Play wants it linked in the app too). The working tree has newer
+      wording, including the "Delete only some of it" part at
+      `delete-data.html#some`, which the Data safety answers need. Check it
+      shows on the live page before you fill in the form.
 - [ ] **Retention (OWNER).** The privacy text now says the game's maker *may*
       clear saves, leaderboard entries and sign-ins unused for 2 years by
       hand (Firestore's automatic TTL needs the paid plan). It's a "may", so
       nothing is promised; if you'd like to do it, ASSISTANT can write a
       script you run once a year.
-- [ ] **PRIVACY_CONTACT (OWNER decision).** Switch it to the new public
-      address, or keep your personal one.
-- [ ] **Neutral age screen (ASSISTANT: done in the working tree, tested
-      against the emulators; OWNER: review, commit, deploy).** For
+- [x] **PRIVACY_CONTACT (OWNER decision).** It stays as it is.
+- [x] **Neutral age screen (live).** For
       mixed-audience apps the Families policy allows services that aren't
       approved for children (here: Google sign-in) only behind a *neutral age
       screen*, or used in a way that collects no data from children. The
@@ -184,7 +193,7 @@ number: not worth it here.
 
 ## Phase 1: the Play Console account (OWNER)
 
-1. Create the dedicated public email address.
+1. Choose the public email address (see "What Google Play shows about you").
 2. Sign up at https://play.google.com/console/signup with the Google account
    that will own the app (you must be 18 or over). Accept the Developer
    Distribution Agreement.
@@ -198,6 +207,8 @@ number: not worth it here.
    account owner and tap Verify.
 6. Wait for Google to finish the identity check. Carry on with Phases 2 and 3
    meanwhile.
+7. **Trader status:** new accounts should declare it straight away. If you
+   haven't yet, do it now: Phase 5, step 4 has the path and what it means.
 
 ## Phase 2: build the Android app with Bubblewrap (OWNER, in your own terminal)
 
@@ -229,6 +240,15 @@ tools and asks:
 `doctor` should end with **"Your jdkpath and androidSdkPath are valid."** The
 paths are saved in `~/.bubblewrap/config.json`.
 
+**If it just stops after the JDK download, with no error:** on Node 24
+Bubblewrap quits silently while unzipping the JDK. Set the tools up by hand
+instead: unpack the Temurin 17.0.11+9 Linux x64 JDK into `~/.bubblewrap/jdk`
+and `commandlinetools-linux-6609375_latest.zip` into
+`~/.bubblewrap/android_sdk`, then write both paths to
+`~/.bubblewrap/config.json` as `jdkPath` and `androidSdkPath`. The questions
+above are then skipped, and the first `build` shows the SDK licence instead,
+ending in `Accept? (y/N):`.
+
 ### 2.2 Create the project: `init`
 
 ```bash
@@ -244,7 +264,7 @@ It prints the Families warning from "Read first", then asks:
 | | URL path: | `/Pip-s-Christmas-Eve-Hunt/` | Enter (keep, with both slashes) |
 | Android app details (2/5) | Application name: | `Pip's Christmas Eve Hunt` | Enter (50 characters at most) |
 | | Short name: | `Pip's Hunt` | Enter (12 at most; shown under the icon) |
-| | Application ID: | `io.github.godwin20.twa` | **Type `io.github.godwin20.pipshunt`**. It can never change after the first upload. |
+| | Application ID: | `io.github.godwin20.twa` | **Type `io.github.godwin20.pipshunt`**. It is permanent from **Create app** in Phase 4. |
 | | Starting version code for the new app version: | `1` | Enter |
 | | Display mode: | `standalone` | **standalone** (see below) |
 | | Orientation: | `any` | **any** |
@@ -302,7 +322,7 @@ Open `~/pips-hunt-android/twa-manifest.json` and change these fields:
 
 | Field | `init` wrote | Set it to | Why |
 |---|---|---|---|
-| `enableNotifications` | `true` | `false` | The game sends no notifications. With `false` the app asks for no permission at all (Bubblewrap only adds `POST_NOTIFICATIONS` when it's `true`). |
+| `enableNotifications` | `true` | `false` | The game sends no notifications. With `false` the app asks players for no permissions (Bubblewrap only adds `POST_NOTIFICATIONS` when it's `true`). |
 | `fallbackType` | `"customtabs"` | keep `"customtabs"` | If the phone's browser can't run a TWA, the game opens in a normal browser tab, where Google sign-in works. `"webview"` would add the `INTERNET` permission and run the game in a WebView, where Google blocks sign-in (and the game hides the button there). |
 | `minSdkVersion` | `21` | `24` | The game is built for Chrome 111 and newer (Vite 8's default target), and Chrome 107 and later don't run on Android 6 or older, so the game could never start there. 24 is Android 7.0. |
 | `themeColorDark` | `"#000000"` | `"#1B2450"` | The status bar colour when the phone is in dark mode; otherwise it turns black. |
@@ -365,12 +385,13 @@ Every future update must be signed with this same upload key.
 ### 2.6 Your upload key's fingerprint
 
 ```bash
-keytool -list -v -keystore ~/pips-hunt-android/android.keystore -alias android
+keytool -printcert -jarfile ~/pips-hunt-android/app-release-bundle.aab
 ```
 
 (Your system `keytool` from JDK 25 reads it fine, or use
-`~/.bubblewrap/jdk/jdk-17.0.11+9/bin/keytool`.) Type the password, and copy
-the value on the line starting **`SHA256:`**: 32 pairs like `AB:CD:...`. Then:
+`~/.bubblewrap/jdk/jdk-17.0.11+9/bin/keytool`.) It reads the signed bundle, so
+it needs no password. Copy the value on the line starting **`SHA256:`**: 32
+pairs like `AB:CD:...`. Then:
 
 ```bash
 cd ~/pips-hunt-android
@@ -396,7 +417,11 @@ and add Play's keys in Phase 4.
 1. **Play Console > Create app.** App name: Pip's Christmas Eve Hunt; default
    language: yours (for example English (United Kingdom)); App or game:
    **Game**; Free or paid: **Free** (Play doesn't let a free app become paid
-   later, which is fine here); accept the declarations.
+   later, which is fine here); package name: `io.github.godwin20.pipshunt`
+   (permanent from this step: package names can't be changed, deleted or
+   reused); contact email: the address players should use; accept the
+   declarations, including the Play App Signing terms of service. Then check
+   that Play Console Home shows no package or developer verification warning.
 2. **Internal test.** Test and release > Testing > **Internal testing**:
    on the Testers tab make an email list with just your own Google account;
    then **Create new release**, upload `app-release-bundle.aab`, release name
@@ -425,54 +450,106 @@ and add Play's keys in Phase 4.
    or the file are wrong: fix, push, check with curl, then uninstall and
    reinstall the app.
 5. **Run the tester checks on your phone first** (`testers.md`, section 4).
-   The big unknown is **Google sign-in inside the app**: whether Firebase's
-   popup sign-in finishes inside a TWA hasn't been tried. If it doesn't,
-   tell ASSISTANT: the game can spot that it's running in the Play app
+   **Google sign-in inside the app** worked on the first phone tried (1
+   November 2026). If it doesn't finish on another phone, tell ASSISTANT:
+   the game can spot that it's running in the Play app
    (`document.referrer` starts with `android-app://io.github.godwin20.pipshunt`)
    and use a redirect sign-in there, or show "sign in on the website"
    instead.
 6. Check the bundle's permissions in Play Console (**App bundle explorer**;
-   newer menus call the page **Latest releases and bundles**): the list
-   should be empty.
+   newer menus call the page **Latest releases and bundles**). The only entry
+   should be `io.github.godwin20.pipshunt.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
+   an internal permission that players never see a prompt for. Anything else,
+   such as `INTERNET` or `POST_NOTIFICATIONS`, is a problem: fix it before you
+   send anything for review. And never send further changes while a review is
+   running: a change sent during a review can push the app to the back of the
+   queue, and Google counts the review time from the last change.
 7. **Before you join the closed test yourself, leave the internal test**
    (opted-in internal testers can't get the closed test).
 
 ## Phase 5: store listing, App content, closed release (OWNER)
 
-1. **Main store listing:** texts and graphics from `store/`.
-2. **Store settings:** category Game, with the genre `store/` suggests (or
-   the closest one, for example Casual); contact email: the public address;
-   website (optional): https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/
-   (as in `store/listing.md`; the user site's https://godwin20.github.io/
-   works too once Phase 3 is done).
+Finish Phase 0 first: the Data safety answers depend on it.
+
+1. **Main store listing:** Grow users > Store presence > **Store listings**:
+   texts and graphics from `store/`.
+2. **Store settings:** Grow users > Store presence > **Store settings**:
+   category Game, with the genre `store/` suggests (or the closest one, for
+   example Casual); contact email: the public address; website (optional):
+   https://godwin20.github.io/Pip-s-Christmas-Eve-Hunt/ (as in
+   `store/listing.md`; the user site's https://godwin20.github.io/ works too).
 3. **App content** (Monitor and improve > Policy and programs > App content),
    in this order: Privacy policy, Ads, Sign-in details, Target audience and
    content, Content rating (all in `content-rating.md`), Data safety
    (`data-safety.md`), then Advertising ID, Government apps, Financial
    features, Health apps, News apps (end of `content-rating.md`).
-4. **Countries / regions:** all. The list applies to every track, the
-   closed test included.
-5. **Closed test:** Test and release > Testing > **Closed testing > Manage
-   track**: testers by Google Group (`testers.md`), then **Create new
-   release** with the same bundle from the library (or a newer one).
-6. **Publishing overview > Send changes for review.** New accounts can wait
-   up to 7 days, sometimes more.
+4. **Trader status:** Play Console > **Manage account > Account details >
+   About you**, and follow the prompts. Every developer account has to declare
+   this for European Economic Area and UK law, free apps included. New
+   accounts should do it straight away, and existing ones have until 1
+   February 2027, so make sure it's done before you send for review. It is
+   your own legal declaration, so only you can make it.
+   - Google says a personal hobby is "unlikely" to make you a trader. A free
+     game with no ads and no purchases, made as a personal hobby, points to
+     **non-trader**.
+   - Rethink it if the game is connected to a business, or if it ever earns
+     money. You can change the status later. Stating it falsely can lead to
+     removal of the app or suspension of the account.
+   - **Non-trader** means users in the European Economic Area and the UK are
+     told that consumer-protection rights don't apply to contracts with you.
+   - **Trader** on a personal account means your phone number and address are
+     shown publicly on Google Play, and you confirm the status for each app
+     in App content.
+5. **Countries / regions:** Test and release > Testing > Closed testing >
+   Manage track > **Countries / regions**. Click **Unsync** if the list can't
+   be edited. Choose **all countries except Brazil and Vietnam** for now, and
+   do it before you send for review. Keep the UK and every EU country.
+   - Why not those two: Google lists duties there that may touch this game.
+     Brazil's law expects apps likely to be used by children to take in
+     age-range data from app stores, and this build doesn't. Vietnam asks for
+     licence documents for online games, and this game has a leaderboard and
+     cloud saves. Whether they apply isn't settled, so add those countries
+     later only if you decide those laws are met.
+   - Each tester's Play account country decides whether they can get the
+     test, so a tester in Brazil or Vietnam can't install it (`testers.md`).
+6. **Closed test:** Test and release > Testing > **Closed testing > Manage
+   track**. On the **Testers** tab, create an email list with just your own
+   address for now (`testers.md`), enter your public email under **Feedback
+   URL or email address**, then **Create new release** with the same
+   bundle from the library (or a newer one). Don't buy testers yet.
+7. **Publishing overview > Send changes for review.** New accounts can wait
+   up to 7 days, sometimes more. Google counts that time from the last change
+   you submitted, and a change sent during a review can push the app to the
+   back of the queue. So after you send, don't send any more changes for
+   review until this one finishes.
 
 ## Phase 6: the closed test, 14 days (OWNER)
 
-All in `testers.md`. Day 1 is the day the 12th tester opts in. Keep everyone
-in until production access is approved.
+As soon as the closed release is approved, buy the testers from PrimeTestLab,
+paste their emails into the closed test's email list and give PrimeTestLab
+the opt-in link. Friends and family can join too. All in `testers.md`.
+
+The 14 days are counted from the day the 12th tester opts in. Apply no earlier
+than that date + 14: for example, opted in Fri 13 Nov, apply Fri 27 Nov. Keep
+12 or more opted in the whole time, and keep everyone in until production
+access is approved.
 
 ## Phase 7: apply for production (OWNER)
 
 Dashboard > **Apply for production**, three parts. Your answers are not shown
-publicly. Ideas to start from (use your real experience):
+publicly. Google asks how easy recruiting was and how testers used the app, so
+answer truthfully. PrimeTestLab offers ready-made answers for this form: use
+them as ideas at most, and write what really happened. Ideas to start from
+(use your real experience):
 
-- **About your closed test:** how easy it was to recruit testers; whether
-  they used every feature (nights, crackers, presents, upgrades, the joke
-  gallery, Google sign-in, offline play, feedback) and played as real players
-  would; a summary of the feedback and how you collected it (the in-game
-  Feedback button into Firebase, Play's testing feedback, email).
+- **About your closed test:** how easy it was to recruit testers (you used a
+  paid service, so say so; the Google pages checked here don't mention paid
+  testers either way);
+  whether they used every feature (nights, crackers, presents, upgrades, the
+  joke gallery, Google sign-in, offline play, feedback) and played as real
+  players would, going by what they actually reported; a summary of the
+  feedback and how you collected it (the in-game Feedback button into
+  Firebase, Play's testing feedback, email, any report from PrimeTestLab).
 - **About your app/game:** the audience (families: children from about 6
   playing with their parents, and grown-ups); what makes it unique (a new
   seeded snowy island every night, 102 jokes and Santa's notes with
@@ -484,12 +561,18 @@ publicly. Ideas to start from (use your real experience):
   several phones, no open crashes).
 
 Review usually takes 7 days or less; the answer comes by email. If Google
-asks for more testing, keep the testers in, encourage more play, and apply
-again.
+asks for more testing, keep the testers in, encourage more play, ask
+PrimeTestLab about the retest its site offers, and apply again.
 
 ## Phase 8: the production release (OWNER)
 
-Test and release > **Production > Create new release**, add the bundle the
+First check the countries: Test and release > Production > **Countries /
+regions**, and confirm the same list is set (all except Brazil and Vietnam).
+A first production release reaches only the selected countries. Google says
+this page opens only after production access is approved, so you can't check
+it sooner.
+
+Then Test and release > **Production > Create new release**, add the bundle the
 testers used (or a newer one), write release notes, Save, and send for review
 from Publishing overview. If you want to choose the moment it goes live, turn
 on managed publishing first (Publishing overview) and press Publish yourself
@@ -506,6 +589,23 @@ change that changes what data is kept, adds anything users can share with
 each other, ads, purchases, or new kinds of content, update the Data safety
 form, the content rating, the target audience and the privacy policy.
 
+**When you add jokes or features later:**
+
+- **New jokes: raise the cap first.** `firestore.rules` caps `jokesFound` at
+  102, so raise it and deploy the rules with the new jokes. `src/cloud/merge.js`
+  has the same number (`BOARD_LIMITS.jokesFound`), so raise that too. The
+  GitHub deploy doesn't publish the rules, so deploy them yourself, before the
+  web deploy.
+- **Update the counts in the listing.** `store/listing.md` gives the number of
+  jokes in the full description and the release notes, and the surprises,
+  upgrades and rewards too. Update the Play Console texts and the character
+  counts to match, and "102 jokes" in Phase 7 above.
+- **A web deploy reaches the app with no Play review,** so nothing else will
+  catch this. Whenever you add new content, read it against `content-rating.md`
+  and retake the content rating if an answer changes. Whenever you add new
+  data, update Data safety (`data-safety.md`) and the privacy pages, and do it
+  before the web deploy goes out.
+
 **Android-side changes need a new bundle:** the name, icon, colours, display
 mode, orientation, minSdkVersion, a newer Bubblewrap template, or a higher
 target API:
@@ -517,8 +617,10 @@ npx --yes @bubblewrap/cli@<version> update    # also raises the version code by 
 npx --yes @bubblewrap/cli@<version> build
 ```
 
-Upload the new `app-release-bundle.aab` to the internal test, check it, then
-put the same bundle on production. Same keystore, every time.
+Opt your own account back in to the internal test first (Phase 4, step 7 had
+you leave it). Upload the new `app-release-bundle.aab` to the internal test,
+check the build on your phone, then put the same bundle on production. Same
+keystore, every time.
 
 **The yearly target API rise.** Google raises the required target API every
 year: since 31 August 2026 new apps and updates must target API 36
@@ -531,6 +633,24 @@ and upload before the deadline.
 **Store listing changes** (texts, screenshots) are edited in Play Console at
 any time; they're reviewed too.
 
+## If someone emails to delete their data (OWNER)
+
+The policy promises this within 30 days, and a reply when it's done. A guest's
+save can't be found by email, so point guests to the button in the game.
+
+- [ ] Firebase console > Authentication: find the user by their email address
+      and copy the uid.
+- [ ] Firestore: delete `players/{uid}`, `leaderboard/{uid}`, every `feedback`
+      document with that uid, and `feedbackLimits/{uid}`.
+- [ ] Authentication: delete the user.
+- [ ] Look again after an hour. Another device still signed in to that account
+      can write `players/{uid}` and `leaderboard/{uid}` back for up to an hour,
+      so delete anything that has come back.
+- [ ] Reply to say it's done.
+
+If they ask for just their feedback or a note to go, delete only that document
+and reply.
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -542,7 +662,7 @@ any time; they're reviewed too.
 | Play: the bundle is signed with the wrong key | You built with a different keystore. Use the backed-up `android.keystore`, or request an upload key reset. |
 | Google sign-in doesn't finish inside the app | Phase 4, step 5. |
 
-## Sources (all checked on 30 October 2026)
+## Sources (checked on 30 October 2026, the last group on 1 November 2026)
 
 - Bubblewrap 1.27.0: `npx --yes @bubblewrap/cli@1.27.0 help` and `help init`,
   and its source (the prompts, `twa-manifest.json` fields and defaults,
@@ -574,9 +694,24 @@ any time; they're reviewed too.
 - Chrome's Android support: Chrome 106 was the last for Android 6 (Chromium
   developers' announcement), Chrome 119 the last for Android 7 (Chrome
   release notes).
+- Trader status:
+  https://support.google.com/googleplay/android-developer/answer/17594752
+- Countries with their own legal duties (Brazil, Vietnam):
+  https://support.google.com/googleplay/android-developer/answer/6223646
+- Track sync and country targeting:
+  https://support.google.com/googleplay/android-developer/answer/7550024
+- Review times and changes during a review:
+  https://support.google.com/googleplay/android-developer/answer/9859654
+- Create app, and package names:
+  https://support.google.com/googleplay/android-developer/answer/9859152
 
 **Not confirmed:** how long Google's identity check takes; whether Firebase's
-popup sign-in works inside a TWA; which of Play's three signing keys Chrome
-checks; whether a TWA game for children passes the Families "webview" rule
-today (Bubblewrap's warning dates from 2021, and I found no newer Google
-statement either way).
+popup sign-in works inside a TWA on every phone (it worked on the first one
+tried); which of Play's three signing keys Chrome checks; whether a TWA game
+for children passes the Families "webview" rule today (Bubblewrap's warning
+dates from 2021, and I found no newer Google statement either way); whether a
+missing trader declaration stops Send for review by itself; what the Countries
+/ regions tab shows before production access, and whether Unsync is needed
+there; whether Brazil's and Vietnam's rules apply to this game; which Console
+page shows the permission list; and whether reviews slow down in December (the
+dates above use Google's normal 7 days).

@@ -250,7 +250,8 @@ locally and refreshes the HUD, cosmetics and any open menu.
   `test/age-gate.test.js`: the grown-ups gate's age arithmetic and how a pass
   and a "not now" are kept), the facade with a fake SDK (including the
   "Confirm with Google" delete) and `test/privacy-pages.test.js` (the public
-  pages say what the game says).
+  pages say what the game says, and only a guest gets the "Used Google sign-in
+  before?" warning).
 - **Rules tests:** `npm run test:rules` runs `firebase emulators:exec --only
   firestore` with Vitest and `@firebase/rules-unit-testing`. They cover every
   allow and deny case above.
@@ -298,8 +299,8 @@ one. Board spacing (the last write time) also survives an account switch, so a
 quick sign-out and sign-in never trips the 5 s rule.
 
 ### Grown-ups gate for Google sign-in
-Linking Google stores the parent's email, name and photo in Firebase
-Authentication, so sign-in is for grown-ups. Google Play's Families policy
+Linking Google stores the parent's email, name, photo and Google account ID
+in Firebase Authentication, so sign-in is for grown-ups. Google Play's Families policy
 allows a service like Google Sign-In in a mixed-audience app only behind a
 *neutral age screen*, and the FTC's COPPA guidance describes one: ask the
 month and year of birth with a full range of choices, no default answer, no
@@ -391,9 +392,9 @@ guest?, needsReauth?, error? }` and never rejects:
 A failure in steps 1–2 changes nothing on the device, so the player can try again.
 
 **A Google sign-in is never left behind quietly.** It holds the grown-up's
-email address, name and profile photo, and Firebase refuses to delete it
-unless the sign-in is fresh (`auth/requires-recent-login`, after about 5
-minutes). So when `deleteUser` fails for a Google player who is still signed
+email address, name, profile photo and Google account ID, and Firebase
+refuses to delete it unless the sign-in is fresh
+(`auth/requires-recent-login`, after about 5 minutes). So when `deleteUser` fails for a Google player who is still signed
 in:
 - The cloud docs are gone already, and the device starts fresh at once
   (step 4), but the player **stays signed in** as the Google uid. The answer
@@ -439,10 +440,24 @@ with nothing linked to them; the owner can clear them by hand with the
 2-year tidy-up. The public pages say so either way (`DELETE_FACTS.guest`:
 "Firebase may keep that ID"), and promise only that a Google sign-in goes.
 
+**Only the player on this device goes.** After "Sign out on this device", or
+on a device that never signed in, the player is a guest, and a delete removes
+only that guest's data. The Google account's save, leaderboard entry, feedback
+and sign-in all stay. So `deleteWords()` in `src/ui/privacy-text.js` picks the
+words from `accountSig()`:
+- Signed in with Google: the question says "your Google sign-in" goes.
+- Guest: the question leaves that out, and "Used Google sign-in before? Sign
+  in on this device first so that account is deleted too, or email us."
+  (`DELETE_FACTS.signedOut`) shows beside the delete button and in the
+  question. It stays away just after a delete, when the note says what happened.
+- While the status is `checking`: no warning, because a returning Google player
+  still looks like a guest. Both screens redraw once the status settles.
+
 **Not covered:** another device still signed in to the deleted Google
 account keeps a working token for up to an hour and could sync again in that
-time (it can't know about the delete). Only server code could stop that; the
-owner's by-hand tidy-up clears what is left.
+time (it can't know about the delete). Only server code could stop that, so
+`delete-data.html` asks people to sign out there first, and the owner's by-hand
+tidy-up clears what is left.
 
 The UI offers "Delete my saved data" with an in-page confirm, on both the
 privacy screen and the account card. While `status.needsReauth` is true, both
@@ -456,10 +471,10 @@ A `privacy` screen opens from a "🔒 Privacy" link next to "Reset progress"
 on the title, and from the account card. It uses short, plain sentences for
 grown-ups, from `PRIVACY_FACTS` in `src/ui/privacy-text.js`:
 - **Guests:** we keep a random player ID, the game progress and the snow
-  name. No name, email or location.
+  name. No real name, email or location.
 - **Google sign-in:** Google Firebase also keeps the account's email address,
-  name and profile photo, so progress can follow you. Only grown-ups should
-  do this.
+  name, profile photo and Google account ID, so progress can follow you. Only
+  grown-ups should do this.
 - **Leaderboard:** shows only snow names made from our word lists, and scores.
 - **Feedback:** if you send some, we keep the stars, topic, quick notes, any
   grown-up's note, the map number, device type (touch or keyboard), app
@@ -483,7 +498,8 @@ grown-ups, from `PRIVACY_FACTS` in `src/ui/privacy-text.js`:
 - **iPhone and iPad:** Safari may clear a guest's progress after about a week
   of not playing; sign in with Google to keep it.
 - **To delete:** the "Delete my saved data" button (it deletes any feedback
-  you sent and a Google sign-in too), or contact `PRIVACY_CONTACT`.
+  you sent and a Google sign-in too), or, for a Google account, contact
+  `PRIVACY_CONTACT`.
 
 Under the list, "📄 Read the full privacy policy" opens `privacy.html` in a
 new tab (only with a cloud: the policy describes the game with one).
@@ -508,20 +524,27 @@ read well at 375 px.
   Google is a service provider), security, children, how long, deleting,
   rights and changes. It names Firebase Authentication's handling of IP
   addresses and user agents for security, GitHub Pages seeing IP addresses
-  as the web host, and Google's own sign-in window, and says the game never
-  works out a location.
-- **delete-data.html:** the in-game steps (including "Confirm with Google"),
-  how to ask by email without opening or reinstalling the game (from the
-  Google address; a guest's save can't be found from an email), what is
-  deleted, what Google keeps for a while and why (including the guest ID
-  Firebase may keep, see above), and the time frames (straight away in the
-  game, 30 days by email).
+  as the web host, Google's own sign-in window, and the small helper the
+  sign-in code loads from Google at start-up on phones, tablets and Safari
+  (Firebase's `browserPopupRedirectResolver`, for every player), and says the
+  game never works out a location. It also says that leaderboard entries are
+  filed under the random player ID, and that email deletion is for Google
+  accounts, while guests use the button in the game.
+- **delete-data.html:** the in-game steps (including "Confirm with Google",
+  signing out on other devices first and signing in here first), how to ask
+  by email without opening or reinstalling the game (from the Google address;
+  a guest's save can't be found from an email), what is deleted, what Google
+  keeps for a while and why (including the guest ID Firebase may keep, see
+  above), the time frames (straight away in the game, 30 days by email), and
+  "Delete only some of it" (`#some`): "Reset progress" (replaces the cloud
+  progress and scores, keeps the snow name), "Show me on the leaderboard"
+  (switching it off deletes the entry) and email (just feedback or a note).
 - `DELETE_FACTS` in `src/ui/privacy-text.js` holds the sentences both pages
   share. `test/privacy-pages.test.js` checks that the pages still say every
   `PRIVACY_FACTS` and `DELETE_FACTS` sentence word for word, carry the same
   "Last updated" date (`POLICY_UPDATED`) and `PRIVACY_CONTACT`, link to each
-  other and have no script. **Change the wording in all three places
-  together**, and the date with it.
+  other, have no script and name the game's real buttons in `#some`. **Change
+  the wording in all three places together**, and the date with it.
 - The service worker precaches both pages (they are `.html` in the build), so
   they open offline, and the navigation fallback never answers them with the
   game: plain URLs come from the precache, and a URL with a query string

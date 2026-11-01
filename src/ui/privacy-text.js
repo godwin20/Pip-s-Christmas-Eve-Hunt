@@ -8,15 +8,15 @@
 // Next to index.html, so relative links work on any host and in the app.
 export const POLICY_PAGE = 'privacy.html';
 export const DELETE_PAGE = 'delete-data.html';
-export const POLICY_UPDATED = '30 October 2026';
+export const POLICY_UPDATED = '1 November 2026';
 
 // The Privacy screen's list. The pages say each as "lead text".
 export const PRIVACY_FACTS = [
-  { icon: '🐧', lead: 'Guests:', text: 'we keep a random player ID, the game progress and the snow name. No name, email or location.' },
+  { icon: '🐧', lead: 'Guests:', text: 'we keep a random player ID, the game progress and the snow name. No real name, email or location.' },
   {
     icon: '🔑',
     lead: 'Google sign-in:',
-    text: "Google Firebase also keeps the account's email address, name and profile photo, so progress can follow you. Only grown-ups should do this.",
+    text: "Google Firebase also keeps the account's email address, name, profile photo and Google account ID, so progress can follow you. Only grown-ups should do this.",
   },
   { icon: '🏆', lead: 'Leaderboard:', text: 'shows only snow names made from our word lists, and scores.' },
   // one-way to the game's maker, so the "no chat" below stays true
@@ -55,13 +55,35 @@ export const PRIVACY_FACTS = [
 // What "Delete my saved data" (or an email asking for it) removes, what
 // Google keeps for a while, and how soon. Both pages say all of it.
 export const DELETE_FACTS = {
-  what: 'Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name and profile photo.',
+  what: 'Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name, profile photo and Google account ID.',
   // Firebase refuses to delete a sign-in that isn't fresh, and a guest's
   // can't be confirmed again (cloud.deleteEverything signs it out instead),
   // so the pages don't promise that it goes.
   guest: "A guest's sign-in holds only the random player ID. Firebase may keep that ID, but nothing is stored under it any more.",
   googleAccount: 'Your Google account itself stays as it is: only its link to this game goes.',
+  // A delete reaches only the player on this device. After "Sign out on this
+  // device", or on a device that never signed in, that is a guest, and the
+  // Google account's data stays. The game says this beside its delete button
+  // to anyone not signed in with Google (deleteWords, below).
+  signedOut: 'Used Google sign-in before? Sign in on this device first so that account is deleted too, or email us.',
   kept: "Google keeps its own security logs, which include IP addresses, for a few weeks, and deleted data leaves Google's backups within about 180 days.",
   inGame: 'In the game it happens straight away.',
   byEmail: "If you email us, we delete it within 30 days and tell you when it's done.",
 };
+
+// The delete question, for what this player will really delete.
+export const DELETE_ASK = {
+  google: "Your progress, snow name, scores, any feedback you sent and your Google sign-in are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone.",
+  guest: "Your progress, snow name, scores and any feedback you sent are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone.",
+  checking: "Your progress, snow name, scores, any feedback you sent and, if you're signed in, your Google sign-in are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone.",
+};
+
+// `account` is accountSig() from screens.js. While it is 'checking' a returning
+// Google player still looks like a guest, so the warning waits for the answer.
+export function deleteWords(account) {
+  const sig = String(account);
+  return {
+    ask: sig.startsWith('google:') ? DELETE_ASK.google : sig === 'checking' ? DELETE_ASK.checking : DELETE_ASK.guest,
+    warning: sig === 'guest' ? DELETE_FACTS.signedOut : null,
+  };
+}

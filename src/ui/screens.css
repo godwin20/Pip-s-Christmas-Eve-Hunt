@@ -5016,6 +5016,19 @@ p .scr-key {
   text-align: left;
 }
 
+/* "Used Google sign-in before?": beside the delete button and in its question */
+.scr-delnote {
+  font-weight: 600;
+}
+
+.scr-lbacct__links .scr-delnote {
+  flex: 1 0 100%;
+  margin: 4px 0;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .scr-privacy__delbody > .scr-privacy__note {
   margin: 12px 0 0;
   padding: 8px 12px;

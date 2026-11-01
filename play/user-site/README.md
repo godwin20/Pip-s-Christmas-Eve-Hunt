@@ -21,7 +21,7 @@ exactly `godwin20.github.io`. This folder holds its files.
 
 ## 1. Create the repo (OWNER)
 
-1. Sign in to GitHub as **godwin20** (not KLS-Digital-Solutions).
+1. Sign in to GitHub as **godwin20**.
 2. Create a new repository named exactly **`godwin20.github.io`**. It must be
    **Public** (Pages on a free account needs that). Don't add a README,
    licence or `.gitignore`, so the first push is just these files.

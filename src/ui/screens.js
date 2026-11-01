@@ -14,7 +14,7 @@ import { RARITY_COINS } from '../game/crackers.js';
 import { defaultSave } from '../core/save.js';
 import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
 import { PRIVACY_CONTACT } from '../cloud/config.js';
-import { PRIVACY_FACTS, DELETE_FACTS, POLICY_PAGE } from './privacy-text.js';
+import { PRIVACY_FACTS, DELETE_FACTS, POLICY_PAGE, deleteWords } from './privacy-text.js';
 import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, FEEDBACK_QUICK_MAX, FEEDBACK_COMMENT_MAX, cleanSeed } from '../cloud/feedback.js';
 import { isInAppBrowser, isIPad } from '../core/pwa.js';
 import { BIRTH_MONTHS, birthYears, ageCheck, passUntil, lockUntil, gateStep, gateOutcome, GATE_PASS_KEY, GATE_LOCK_KEY } from './age-gate.js';
@@ -124,7 +124,7 @@ const DELETED_KEPT_TEXT = 'Your saved data is deleted and this device starts fre
 // the Google sign-in can go. The rest is deleted already, and the cloud's
 // status.needsReauth keeps "Confirm with Google" on screen until it is done.
 const REAUTH_TEXT =
-  'Your saved data is deleted and this device starts fresh. One more step: Google wants a grown-up to confirm, and then the Google sign-in (email address, name and profile photo) goes too.';
+  'Your saved data is deleted and this device starts fresh. One more step: Google wants a grown-up to confirm, and then the Google sign-in (email address, name, profile photo and Google account ID) goes too.';
 const REAUTH_PICK = 'Pick the Google account you signed in with.';
 const REAUTH_LABEL = 'Confirm with Google to finish deleting';
 const REAUTH_CLOSED = "The Google window closed, so the Google sign-in is still here. Press the button again when you're ready.";
@@ -492,7 +492,7 @@ function cloudInfo(status) {
 // their buttons (or the focus). Before the first sync the facade still reports
 // its default isAnonymous: true, so a returning Google player would see a
 // "Sign in" button flash up at boot without the 'checking' step.
-function accountSig(status) {
+export function accountSig(status) {
   const s = status && typeof status === 'object' ? status : {};
   if (s.isAnonymous === false) return `${s.needsReauth === true ? 'pending' : 'google'}:${typeof s.accountName === 'string' ? s.accountName : ''}`;
   if (!s.lastSyncedAt && (s.state === 'off' || s.state === 'connecting')) return 'checking';
@@ -3682,6 +3682,7 @@ export function createScreens(root, deps = {}) {
   function accountLinks(lb) {
     const deleting = !!(state.auth.op && state.auth.op.kind === 'delete');
     if (deleting || (state.confirmDelete && hasCloudMethod('deleteEverything'))) return deleteConfirm(`scr-lb-del-${lb.uid}`);
+    const canDelete = hasCloudMethod('deleteEverything') && !reauthPending();
     return h(
       'div',
       { class: 'scr-lbacct__links' },
@@ -3699,9 +3700,10 @@ export function createScreens(root, deps = {}) {
         h('span', { 'aria-hidden': 'true' }, '🔒'),
         ' Privacy'
       ),
-      hasCloudMethod('deleteEverything') && !reauthPending()
+      canDelete
         ? h('button', { type: 'button', class: 'scr-textlink', 'data-key': 'delete', onclick: () => askDelete() }, h('span', { 'aria-hidden': 'true' }, '🗑️'), ' Delete my saved data')
-        : null
+        : null,
+      canDelete ? signedOutNote() : null
     );
   }
 
@@ -4171,22 +4173,26 @@ export function createScreens(root, deps = {}) {
       keep.setAttribute('aria-disabled', 'true');
       yes.setAttribute('aria-disabled', 'true');
     }
+    const warning = busy ? null : signedOutNote(`${id}-w`);
     return h(
       'div',
-      { class: 'scr-confirm scr-delconfirm', role: 'alertdialog', 'aria-labelledby': id, 'aria-describedby': `${id}-d` },
-      h(
-        'p',
-        null,
-        h('b', { id }, 'Delete your saved data?'),
-        ' ',
-        h(
-          'span',
-          { id: `${id}-d` },
-          "Your progress, snow name, scores, any feedback you sent and any Google sign-in are deleted from the cloud and the leaderboard, and this device starts fresh. This can't be undone."
-        )
-      ),
+      { class: 'scr-confirm scr-delconfirm', role: 'alertdialog', 'aria-labelledby': id, 'aria-describedby': warning ? `${id}-d ${id}-w` : `${id}-d` },
+      h('p', null, h('b', { id }, 'Delete your saved data?'), ' ', h('span', { id: `${id}-d` }, deleteWords(sigNow()).ask)),
+      warning,
       h('div', { class: 'scr-confirm__btns' }, keep, yes)
     );
+  }
+
+  // "Used Google sign-in before?", for anyone not signed in with Google: a
+  // delete reaches only the player on this device (docs/CLOUD.md). Null when
+  // it doesn't apply, and just after a delete, when the note says what happened.
+  function signedOutNote(id) {
+    const { warning } = deleteWords(sigNow());
+    const note = authNote();
+    if (!warning || (note && (note.text === DELETED_TEXT || note.text === DELETED_KEPT_TEXT))) return null;
+    const [before, after] = warning.split('email us');
+    const us = contactEl('email us');
+    return h('p', { class: 'scr-delnote', id }, us ? [before, us, after] : `${before.replace(/, or $/, '')}.`);
   }
 
   function askDelete() {
@@ -4389,8 +4395,9 @@ export function createScreens(root, deps = {}) {
   }
 
   // PRIVACY_CONTACT (src/cloud/config.js) as a link: mailto, or a web page
-  // in a new tab. Plain text if it is neither, null if there is none.
-  function contactEl() {
+  // in a new tab. Plain text if it is neither, null if there is none. `label`
+  // replaces the address as the link's words.
+  function contactEl(label) {
     const contact = contactLink(PRIVACY_CONTACT);
     if (!contact) return null;
     if (!contact.href) return h('b', { class: 'scr-privacy__contact' }, contact.text);
@@ -4402,7 +4409,7 @@ export function createScreens(root, deps = {}) {
         target: contact.external ? '_blank' : null,
         rel: contact.external ? 'noopener noreferrer' : null,
       },
-      contact.text,
+      label || contact.text,
       contact.external ? h('span', { class: 'scr-sr' }, ' (opens in a new tab)') : null
     );
   }
@@ -4421,7 +4428,7 @@ export function createScreens(root, deps = {}) {
     // "To delete": the button where there is one, and the contact when set
     let toDelete;
     if (!hasCloud) toDelete = contact ? ['use "Reset progress" on the title screen. Questions? Contact ', contact, '.'] : 'use "Reset progress" on the title screen.';
-    else if (canDelete) toDelete = contact ? ['use the "Delete my saved data" button below, or contact ', contact, '.'] : 'use the "Delete my saved data" button below.';
+    else if (canDelete) toDelete = contact ? ['use the "Delete my saved data" button below, or, for a Google account, contact ', contact, '.'] : 'use the "Delete my saved data" button below.';
     else toDelete = contact ? ['contact ', contact, '.'] : '"Reset progress" on the title screen clears this device.';
     // The cloud's list says what public/privacy.html says, word for word
     // (src/ui/privacy-text.js).
@@ -4504,6 +4511,7 @@ export function createScreens(root, deps = {}) {
     } else {
       kids.push(
         h('p', null, `${DELETE_FACTS.what} This device then starts fresh.`),
+        signedOutNote(),
         h(
           'div',
           { class: 'scr-privacy__btns' },
@@ -4513,12 +4521,18 @@ export function createScreens(root, deps = {}) {
     }
     // (the waiting panel shows its own note)
     if (note && !deleting && !pending) kids.push(h('p', { class: 'scr-privacy__note', 'data-tone': note.tone }, note.text));
-    keepFocus(refs.box, () => refs.box.replaceChildren(...kids), () => refs.box.querySelector('button'));
+    keepFocus(refs.box, () => refs.box.replaceChildren(...kids.filter(Boolean)), () => refs.box.querySelector('button'));
+    if (sigNow() === 'checking') whenCheckingEnds(syncPrivacyDelete);
   }
 
   // What the delete box shows that the cloud's status can change.
   function privacyKey() {
-    return `${reauthPending()}|${cloudReady()}`;
+    return `${reauthPending()}|${cloudReady()}|${sigNow()}`;
+  }
+
+  // Redraws the delete box only when what it shows changed.
+  function syncPrivacyDelete() {
+    if (state.current === 'privacy' && state.privacy && state.privacy.key !== privacyKey()) renderPrivacyDelete();
   }
 
   // ---------------------------------------------------------------------------
@@ -5322,7 +5336,7 @@ export function createScreens(root, deps = {}) {
         renderTitleAuth();
       } else if (state.current === 'leaderboard') leaderboardStatusChanged();
       // a delete waiting for Google (or done in another tab), or the cloud got ready
-      else if (state.current === 'privacy' && state.privacy && state.privacy.key !== privacyKey()) renderPrivacyDelete();
+      else syncPrivacyDelete();
     } catch (err) {
       console.error('[screens] cloudChanged failed', err);
     }

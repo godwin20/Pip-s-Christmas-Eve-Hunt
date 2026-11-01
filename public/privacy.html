@@ -311,7 +311,7 @@
       <header>
         <p class="app"><span aria-hidden="true">🐧🎁 </span>Pip's Christmas Eve Hunt</p>
         <h1>Privacy policy</h1>
-        <p class="updated">Last updated: 30 October 2026</p>
+        <p class="updated">Last updated: 1 November 2026</p>
       </header>
 
       <main>
@@ -329,8 +329,8 @@
           <h2 id="short">In short</h2>
           <!-- word for word the list on the game's own Privacy screen -->
           <ul class="facts">
-            <li><span aria-hidden="true">🐧</span><p><b>Guests:</b> we keep a random player ID, the game progress and the snow name. No name, email or location.</p></li>
-            <li><span aria-hidden="true">🔑</span><p><b>Google sign-in:</b> Google Firebase also keeps the account's email address, name and profile photo, so progress can follow you. Only grown-ups should do this.</p></li>
+            <li><span aria-hidden="true">🐧</span><p><b>Guests:</b> we keep a random player ID, the game progress and the snow name. No real name, email or location.</p></li>
+            <li><span aria-hidden="true">🔑</span><p><b>Google sign-in:</b> Google Firebase also keeps the account's email address, name, profile photo and Google account ID, so progress can follow you. Only grown-ups should do this.</p></li>
             <li><span aria-hidden="true">🏆</span><p><b>Leaderboard:</b> shows only snow names made from our word lists, and scores.</p></li>
             <li><span aria-hidden="true">⭐</span><p><b>Feedback:</b> if you send some, we keep the stars, topic, quick notes, any grown-up's note, the map number, device type (touch or keyboard), app version and the player ID, to improve the game. Only the game's maker reads it; other players never see it.</p></li>
             <li><span aria-hidden="true">🎂</span><p><b>Birth month and year:</b> before Google sign-in or writing a grown-up's note, the game asks for them; the answer stays on the device and isn't sent anywhere.</p></li>
@@ -339,7 +339,7 @@
             <li><span aria-hidden="true">🔒</span><p><b>Safety:</b> it travels encrypted, Google stores it encrypted, and each player can only reach their own save.</p></li>
             <li><span aria-hidden="true">⏳</span><p><b>How long:</b> until you delete it. The game's maker may also clear away, by hand, saves, leaderboard entries and sign-ins that haven't been used for 2 years.</p></li>
             <li><span aria-hidden="true">📱</span><p><b>iPhone and iPad:</b> Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.</p></li>
-            <li><span aria-hidden="true">🗑️</span><p><b>To delete:</b> use the "Delete my saved data" button on the game's Privacy screen, or email <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>. See <a href="delete-data.html">Delete your data</a>.</p></li>
+            <li><span aria-hidden="true">🗑️</span><p><b>To delete:</b> use the "Delete my saved data" button on the game's Privacy screen, or, for a Google account, email <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>. See <a href="delete-data.html">Delete your data</a>.</p></li>
           </ul>
         </section>
 
@@ -362,7 +362,7 @@
             </p>
           </li>
           <li>
-            <h3>Email address, name and profile photo <span class="tag optional">only with Google sign-in</span></h3>
+            <h3>Email address, name, profile photo and Google account ID <span class="tag optional">only with Google sign-in</span></h3>
             <p>
               Only if a grown-up chooses "Sign in with Google". Google shares them with Firebase Authentication when you sign in, so progress can follow the
               Google account to other devices. The game itself shows only the first name ("Signed in as …"), on that device. It never puts them on the
@@ -388,11 +388,13 @@
         <p>
           To keep sign-in secure and stop abuse, Google's Firebase Authentication also handles the device's IP address and browser details (the "user agent").
           The game's files come from GitHub Pages, which, like any web host, sees the IP address when it sends them. Signing in with Google happens in
-          Google's own window, under Google's privacy policy. We don't use any of this, and the game never asks for or works out where you are.
+          Google's own window, under Google's privacy policy. On phones, tablets and Safari, the sign-in code also loads a small helper from Google when the
+          game starts, even if nobody signs in. Like any web request, it sees the IP address. We don't use any of this, and the game never asks for or works
+          out where you are.
         </p>
         <p>
-          The game doesn't collect contacts, photos, files, the microphone or camera, payment details or an advertising ID, and it contains no advertising,
-          analytics or crash-reporting tools.
+          Apart from the Google profile photo described above, the game doesn't touch the photos or files on your device, your contacts, the microphone or
+          camera. It collects no payment details or advertising ID, and it contains no advertising, analytics or crash-reporting tools.
         </p>
 
         <h2 id="device">What stays on your device</h2>
@@ -413,7 +415,7 @@
           countries where it has data centres.
         </p>
         <ul>
-          <li><b>Other players</b> see only the leaderboard: snow names and scores. Never a real name, email or photo.</li>
+          <li><b>Other players</b> see only the leaderboard: snow names and scores. Never a real name, email or photo. Each entry is filed under the random player ID, which the game never shows.</li>
           <li><b>Your own device</b> can read and change only your own save. No player can read anyone's feedback.</li>
           <li><b>The game's maker</b> can see the stored data in the Firebase console, to run and fix the game and to read feedback.</li>
           <li><b>Google</b> stores and processes it for us, as our service provider.</li>
@@ -454,11 +456,16 @@
         <h2 id="delete">Deleting your data</h2>
         <p>
           In the game: on the title screen, tap <b>Privacy</b>, then <b>Delete my saved data</b> and <b>Yes, delete it</b>. If you signed in with Google, the
-          game may ask you to confirm with Google once more ("Confirm with Google to finish deleting"). Or email
-          <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>, without opening or reinstalling the game. The steps are on
+          game may ask you to confirm with Google once more ("Confirm with Google to finish deleting"). The steps are on
           <a href="delete-data.html">Delete your data</a>.
         </p>
-        <p>Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name and profile photo.</p>
+        <p>
+          If you signed in with Google, you can also ask by email, without opening or reinstalling the game: write to
+          <a href="mailto:keithstack1@gmail.com">keithstack1@gmail.com</a>. A guest's save has no name or email on it, so an email can't tell us which one is
+          yours. Guests use the button in the game on that device instead.
+        </p>
+        <p>Used Google sign-in before? Sign in on this device first so that account is deleted too, or <a href="mailto:keithstack1@gmail.com">email us</a>.</p>
+        <p>Deleting removes the cloud save (progress, snow name and scores), the leaderboard entry, any feedback you sent and a Google sign-in, with its email address, name, profile photo and Google account ID.</p>
         <p>A guest's sign-in holds only the random player ID. Firebase may keep that ID, but nothing is stored under it any more.</p>
         <p>Your Google account itself stays as it is: only its link to this game goes.</p>
         <p>Google keeps its own security logs, which include IP addresses, for a few weeks, and deleted data leaves Google's backups within about 180 days.</p>

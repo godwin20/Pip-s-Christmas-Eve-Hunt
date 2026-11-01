@@ -945,6 +945,12 @@
   }
 }
 
+/* Touch screens: key hints ("E", "or press E") are only for keyboards. */
+#hud:has(.pip-hud.is-touch) ~ #popups .pp-key,
+#hud:has(.pip-hud.is-touch) ~ #popups .pp-reveal small {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pp-rays,
   .pp-unlock-rays,

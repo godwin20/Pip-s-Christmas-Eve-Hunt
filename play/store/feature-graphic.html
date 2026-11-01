@@ -32,7 +32,7 @@
         overflow: hidden;
         /* the menus' night sky, a little brighter towards the horizon */
         background:
-          radial-gradient(60% 70% at 30% 78%, rgba(255, 214, 120, 0.22) 0%, rgba(255, 214, 120, 0) 70%),
+          radial-gradient(60% 70% at 50% 78%, rgba(255, 214, 120, 0.22) 0%, rgba(255, 214, 120, 0) 70%),
           linear-gradient(180deg, #0f1533 0%, #1b2450 46%, #34408a 78%, #4a55a8 100%);
       }
 
@@ -91,8 +91,8 @@
 
       .fg-moon {
         position: absolute;
-        top: 40px;
-        left: 236px;
+        top: 36px;
+        left: 70px;
         width: 54px;
         height: 54px;
         border-radius: 50%;
@@ -154,30 +154,36 @@
         display: none;
       }
 
-      /* the title screen scene, scaled up */
+      /* the title screen scene, scaled up, in the middle: Google asks for the
+         focal point towards the centre and only background art at the edges */
       .fg-scene {
         position: absolute;
-        left: 22px;
-        bottom: 24px;
-        width: 380px;
+        left: 50%;
+        bottom: 26px;
+        width: 430px;
         height: 210px;
+        margin-left: -215px;
         transform: scale(1.52);
-        transform-origin: 0 100%;
+        transform-origin: 50% 100%;
       }
 
       .fg-scene .scr-scene {
+        width: 100%;
         margin: 0;
       }
 
-      /* Pip is the star here: a bit bigger than on the title screen */
+      /* Pip is the star here: bigger than on the title screen, dead centre */
       .fg-scene .scr-scene__pip {
-        font-size: 19px;
-        margin-left: -70px;
+        margin-left: -49px;
         bottom: 26px;
       }
 
+      .fg-scene .scr-pip {
+        font-size: 14px;
+      }
+
       .fg-scene .scr-scene__pup {
-        margin-left: 54px;
+        margin-left: 72px;
         font-size: 10px;
       }
 
@@ -189,27 +195,46 @@
         left: 6%;
       }
 
+      /* the title across the top, centred, on one line */
       .fg-title {
         position: absolute;
-        top: 44%;
-        right: 30px;
-        width: 480px;
-        translate: 0 -50%;
+        top: 28px;
+        left: 50%;
+        width: 720px;
+        translate: -50% 0;
       }
 
       .fg-title .scr-logo__ribbon {
-        font-size: 40px;
-        margin-bottom: 14px;
+        font-size: 32px;
+        margin-bottom: 10px;
       }
 
       .fg-title .scr-logo__main {
-        font-size: 82px;
-        row-gap: 0.02em;
+        flex-wrap: nowrap;
+        font-size: 68px;
         padding-bottom: 0;
       }
 
       .fg-title .scr-logo-sparkles i {
         font-size: 26px;
+      }
+
+      /* keep the sparkles off the letters, which now sit on one line */
+      .fg-title .scr-logo-sparkles i:nth-child(1) {
+        left: -3%;
+        top: 74%;
+      }
+
+      .fg-title .scr-logo-sparkles i:nth-child(4) {
+        right: 28%;
+        top: 112%;
+        bottom: auto;
+      }
+
+      .fg-title .scr-logo-sparkles i:nth-child(5) {
+        left: 30%;
+        top: 110%;
+        bottom: auto;
       }
     </style>
   </head>
@@ -219,10 +244,10 @@
       <div class="fg-aurora fg-aurora--b"></div>
       <div class="fg-stars"></div>
       <div class="fg-moon"></div>
-      <i class="fg-twinkle" style="left: 40%; top: 30px; font-size: 22px; color: var(--gold)">✦</i>
-      <i class="fg-twinkle" style="left: 7%; top: 70px; font-size: 16px">✧</i>
-      <i class="fg-twinkle" style="right: 5%; top: 24px; font-size: 18px">❄</i>
-      <i class="fg-twinkle" style="right: 4%; bottom: 120px; font-size: 20px; color: var(--gold)">★</i>
+      <i class="fg-twinkle" style="left: 3%; top: 150px; font-size: 22px; color: var(--gold)">✦</i>
+      <i class="fg-twinkle" style="left: 15%; top: 196px; font-size: 16px">✧</i>
+      <i class="fg-twinkle" style="right: 7%; top: 40px; font-size: 18px">❄</i>
+      <i class="fg-twinkle" style="right: 5%; top: 170px; font-size: 20px; color: var(--gold)">★</i>
 
       <div class="fg-hill fg-hill--back"></div>
       <div class="fg-hill fg-hill--back2"></div>
@@ -230,9 +255,9 @@
       <div class="fg-forest fg-forest--far" style="left: 0; right: 0">
         <div class="scr-tree" style="left: 8px; font-size: 7px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
         <div class="scr-tree" style="left: 52px; font-size: 9px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
-        <div class="scr-tree" style="left: 330px; font-size: 6px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
-        <div class="scr-tree" style="left: 372px; font-size: 8px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
-        <div class="scr-tree" style="right: 70px; font-size: 7px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="left: 112px; font-size: 6px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="left: 146px; font-size: 8px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
+        <div class="scr-tree" style="right: 66px; font-size: 7px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
         <div class="scr-tree" style="right: 18px; font-size: 9.5px"><span class="scr-tree__trunk"></span><i class="scr-tree__t1"></i><i class="scr-tree__t2"></i><i class="scr-tree__t3"></i><b class="scr-tree__star">★</b></div>
       </div>
 
