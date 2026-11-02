@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { toon, PALETTE } from './materials.js';
 import { createRng } from '../core/rng.js';
+import { TREE_ROWS } from '../game/baubles.js';
 
 const TAU = Math.PI * 2;
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
@@ -339,6 +340,16 @@ function caneGeometry(r, h, hr, colA = 0xffffff, colB = PALETTE.red, hookArc = 1
   );
 }
 
+// The small breakable cane stuck in the snow (src/world/canes.js): one striped
+// shape, shared by every cane through an InstancedMesh.
+export function makeSmallCaneGeometry() {
+  const b = new MeshBuilder();
+  b.add(caneGeometry(0.075, 0.62, 0.15, 0xffffff, 0xe8192c, 1.05), null);
+  // the little heap of snow it is stuck in
+  b.add(sphere(1, 12, 6), PALETTE.snow, 0, 0.02, 0, 0, 0, 0, 0.27, 0.11, 0.27);
+  return b.build();
+}
+
 // Portion of a cone (base radius R at y=0, tip at y=H) from the tip down to a
 // wavy drippy edge. Used for snow caps, frosting and icing.
 function dripCap(R, H, f, drip, nDrips, phase = 0, radial = 32, rows = 4, puff = 1.06) {
@@ -558,11 +569,13 @@ function buildPine(b, rng, { theme, h = 6, tiers, lowDetail = false } = {}) {
   const greens = rng.pick(PINE_GREENS);
   const candyPal = rng.pick(CANDY_PINES);
   const snow = candy ? 0xfff0f7 : PALETTE.snow;
+  const shape = [];
   for (let i = 0; i < n; i++) {
     const frac = n > 1 ? i / (n - 1) : 0;
     const R = baseR * (1 - 0.58 * frac) * rng.range(0.94, 1.06);
     const th = step * 1.8;
     const y0 = trunkH + i * step;
+    shape.push({ y0, R, th });
     b.push(0, y0, 0, rng.range(-0.04, 0.04), rng.range(0, TAU), rng.range(-0.04, 0.04));
     if (!candy) {
       const cone = paintY(new THREE.ConeGeometry(R, th, 14, 1), greens[0], greens[1]);
@@ -585,6 +598,7 @@ function buildPine(b, rng, { theme, h = 6, tiers, lowDetail = false } = {}) {
     b.pop();
   }
   if (candy) b.add(sphere(0.22, 10, 8), candyPal[0], 0, h + 0.1, 0);
+  return shape;
 }
 
 export function makePineTree(rng, opts = {}) {
@@ -818,6 +832,171 @@ export function makeDecoratedTree(rng, opts = {}) {
     }
   };
   return group;
+}
+
+// ---------------------------------------------------------------------------
+// Pip's Tree: the player's own tree in the village square, in a little tub.
+// ---------------------------------------------------------------------------
+
+// Bottom row first, each row left to right seen from the front. The spots hug
+// the real cones and stay on the side that faces the square.
+function pipTreeSpots(shape, rows) {
+  const spread = 2.1;
+  const spots = [];
+  rows.forEach((n, row) => {
+    const tier = shape[Math.min(row, shape.length - 1)];
+    const up = n === 1 ? 0.22 : 0.15;
+    const r = tier.R * (1 - up) + 0.05;
+    const y = tier.y0 + tier.th * up;
+    for (let i = 0; i < n; i++) {
+      const a = n === 1 ? 0 : -spread / 2 + (spread * i) / (n - 1);
+      const k = (rows.length - row) / rows.length;
+      spots.push(new THREE.Vector3(Math.sin(a * (0.7 + 0.5 * k)) * r, y, Math.cos(a * (0.7 + 0.5 * k)) * r));
+    }
+  });
+  return spots;
+}
+
+// userData.setBaubles(colours) hangs one glossy sphere per spot (TREE_ROWS in
+// game/baubles.js): pass a CSS colour, or null for an empty spot. One draw call
+// whatever is hanging.
+export function makePipTree(rng, opts = {}) {
+  rng = ensureRng(rng);
+  const rows = TREE_ROWS;
+  const candy = opts.theme === 'candy';
+  const h = 5.2;
+  const b = new MeshBuilder();
+  const shape = buildPine(b, rng, { theme: opts.theme, h, tiers: rows.length });
+  // the tub keeps it from looking like just another pine
+  const tub = candy ? CANDY.hotPink : 0xc0392b;
+  b.add(cyl(0.72, 0.56, 0.62, 16), tub, 0, 0.31, 0);
+  b.add(cyl(0.75, 0.75, 0.09, 16), PALETTE.gold, 0, 0.56, 0);
+  b.add(cyl(0.65, 0.65, 0.08, 16), PALETTE.gold, 0, 0.16, 0);
+  b.add(sphere(0.66, 14, 6), candy ? 0xfff0f7 : PALETTE.snow, 0, 0.6, 0, 0, 0, 0, 1, 0.16, 1);
+  const mesh = new THREE.Mesh(b.build(), vcMat());
+  mesh.castShadow = true;
+
+  const g = new THREE.Group();
+  g.name = 'pineTree'; // the camera treats it like any other pine
+  g.add(mesh);
+  const star = new THREE.Mesh(starGeometry(0.42, 0.19, 0.12), starMat());
+  star.position.set(0, h + 0.2, 0);
+  star.castShadow = true;
+  star.name = 'treeStar';
+  g.add(star);
+  const glow = makeGlowSprite(0xffe08a, 2.2, 0.55);
+  glow.position.copy(star.position);
+  g.add(glow);
+
+  const spots = pipTreeSpots(shape, rows);
+  const glossy = new THREE.MeshPhongMaterial({ color: 0xffffff, shininess: 120, specular: 0xffffff, emissive: 0x161620 });
+  glossy.userData.ownedByProp = true;
+  const hanging = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 14, 10), glossy, spots.length);
+  hanging.name = 'pipBaubles';
+  hanging.frustumCulled = false;
+  hanging.setColorAt(0, _col.set(0xffffff)); // so its first shader already has instance colours
+  hanging.count = 0;
+  hanging.visible = false;
+  g.add(hanging);
+
+  const place = new THREE.Matrix4();
+  g.userData.radius = 0.9;
+  g.userData.height = h + 0.6;
+  g.userData.spots = spots;
+  g.userData.setBaubles = (colours) => {
+    let n = 0;
+    spots.forEach((spot, i) => {
+      const colour = colours && colours[i];
+      if (!colour) return;
+      hanging.setMatrixAt(n, place.makeTranslation(spot.x, spot.y, spot.z));
+      hanging.setColorAt(n, _col.set(colour));
+      n++;
+    });
+    hanging.count = n;
+    hanging.visible = n > 0;
+    hanging.instanceMatrix.needsUpdate = true;
+    if (hanging.instanceColor) hanging.instanceColor.needsUpdate = true;
+  };
+  return g;
+}
+
+const SIGN_WORDS = "Pip's Tree";
+let signTex = null;
+
+function drawSign(c) {
+  const g = c.getContext('2d');
+  g.fillStyle = '#b9824f';
+  g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = 'rgba(90, 50, 25, 0.28)';
+  g.lineWidth = 3;
+  for (let y = 22; y < c.height; y += 26) {
+    g.beginPath();
+    g.moveTo(0, y);
+    g.lineTo(c.width, y + 3);
+    g.stroke();
+  }
+  g.font = "700 62px 'Fredoka', 'Comic Sans MS', system-ui, sans-serif";
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  g.lineWidth = 9;
+  g.strokeStyle = '#5a3219';
+  g.strokeText(SIGN_WORDS, c.width / 2, c.height / 2 + 3);
+  g.fillStyle = '#fff3dc';
+  g.fillText(SIGN_WORDS, c.width / 2, c.height / 2 + 3);
+}
+
+// Kept for the whole session, like the companions' speech bubbles, so a new map
+// never redraws it. Null without a DOM (tests): the sign is then just wood.
+function signTexture() {
+  if (signTex || typeof document === 'undefined' || typeof document.createElement !== 'function') return signTex;
+  try {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 128;
+    if (!c.getContext('2d')) return null;
+    drawSign(c);
+    signTex = new THREE.CanvasTexture(c);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    // the first map is built before Fredoka has loaded
+    document.fonts?.load?.("700 62px 'Fredoka'").then(() => {
+      drawSign(c);
+      signTex.needsUpdate = true;
+    }, () => {});
+  } catch {
+    signTex = null;
+  }
+  return signTex;
+}
+
+let signFace = null;
+
+export function makeTreeSign() {
+  const b = new MeshBuilder();
+  const wood = 0x8a5a33;
+  b.add(cyl(0.05, 0.065, 1.05, 8), wood, 0, 0.52, -0.02);
+  b.add(roundBox(1.12, 0.48, 0.07, 0.03), 0x9b6a43, 0, 1.0, 0);
+  b.add(sphere(0.66, 10, 6), PALETTE.snow, 0, 1.25, 0, 0, 0, 0, 0.9, 0.09, 0.09);
+  const mesh = new THREE.Mesh(b.build(), vcMat());
+  mesh.castShadow = true;
+  const g = new THREE.Group();
+  g.name = 'pipTreeSign';
+  g.add(mesh);
+  const tex = signTexture();
+  if (tex) {
+    if (!signFace) {
+      signFace = {
+        geo: new THREE.PlaneGeometry(1.04, 0.416),
+        mat: new THREE.MeshBasicMaterial({ map: tex }),
+      };
+      signFace.geo.userData.keep = true; // lasts as long as the texture
+    }
+    const face = new THREE.Mesh(signFace.geo, signFace.mat);
+    face.position.set(0, 1.0, 0.04);
+    g.add(face);
+  }
+  g.userData.radius = 0.2;
+  return g;
 }
 
 // ---------------------------------------------------------------------------

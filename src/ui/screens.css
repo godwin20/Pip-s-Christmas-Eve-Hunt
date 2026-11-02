@@ -223,6 +223,26 @@
   --edge: #2459b3;
 }
 
+/* Advent Calendar, in December */
+.scr-btn--choc {
+  --bg: #7a4a2b;
+  --bg2: #a06a42;
+  --edge: #5a3419;
+}
+
+/* "a door is ready" */
+.scr-btn__dot {
+  position: absolute;
+  top: -4px;
+  right: 10px;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--ink);
+  border-radius: 50%;
+  background: var(--gold);
+  animation: scr-dotglow 1.8s ease-in-out infinite;
+}
+
 .scr-btn--big {
   min-height: 60px;
   padding: 0.6em 1.7em 0.65em;
@@ -833,6 +853,27 @@
 .scr-coin--big {
   width: 1.3em;
   height: 1.3em;
+}
+
+/* peppermint, the HUD's candy */
+.scr-sweet {
+  display: inline-block;
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+  border: 0.1em solid var(--ink);
+  border-radius: 50%;
+  background: repeating-conic-gradient(#e8192c 0 45deg, #fff 0 90deg);
+}
+
+.scr-sweet--big {
+  width: 1.3em;
+  height: 1.3em;
+}
+
+.scr-buy.is-poor .scr-sweet {
+  filter: grayscale(0.6);
 }
 
 /* ==========================================================================
@@ -1952,6 +1993,9 @@
 .scr-menu .scr-btn:nth-child(5) {
   animation-delay: 0.76s;
 }
+.scr-menu .scr-btn:nth-child(6) {
+  animation-delay: 0.83s;
+}
 
 .scr-menu .scr-btn:hover {
   animation: scr-boing 0.5s ease;
@@ -2608,6 +2652,22 @@
   animation: scr-wiggle 1.6s ease-in-out infinite;
 }
 
+.scr-treats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 10px;
+  padding: 6px 18px;
+  border: var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 4px 0 var(--ink);
+  font-weight: 600;
+}
+
 .scr-section {
   margin-top: 16px;
 }
@@ -2958,6 +3018,9 @@
   color: var(--ink);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
+.scr-tab[data-tab='pets'][aria-selected='true'] {
+  background: linear-gradient(#6aa6ff, #3a7fe0);
+}
 .scr-tab[data-tab='wardrobe'][aria-selected='true'] {
   background: linear-gradient(#47c48f, var(--green));
 }
@@ -3123,6 +3186,14 @@
 
 .scr-lvl i.is-on:nth-child(3) {
   background: radial-gradient(circle at 35% 30%, #fff 0 18%, transparent 22%), var(--green);
+}
+
+.scr-lvl i.is-on:nth-child(4) {
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, transparent 22%), #3a7fe0;
+}
+
+.scr-lvl i.is-on:nth-child(5) {
+  background: radial-gradient(circle at 35% 30%, #fff 0 18%, transparent 22%), #8a5cf6;
 }
 
 .scr-lvl__text {
@@ -3600,6 +3671,542 @@
 
 .scr-wtoggle.is-locked .scr-toggle__sw {
   opacity: 0.4;
+}
+
+/* pets: upgrade cards, plus the words and switch only a pet needs. Four cards
+   make an even row or two, never three and a stray. */
+.scr-upgrades.scr-pets {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 1040px) {
+  .scr-upgrades.scr-pets {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 460px) {
+  .scr-upgrades.scr-pets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.scr-pet__how {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.scr-buy + .scr-pet__how,
+.scr-buy + .scr-pet__go {
+  margin-top: 10px;
+}
+
+.scr-upg__stamp + .scr-pet__how,
+.scr-upg__stamp + .scr-pet__go {
+  margin-top: 10px;
+}
+
+.scr-pet .scr-upg__stamp {
+  padding-inline: 8px;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.scr-wtoggle.scr-pet__go {
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.scr-petnote {
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px auto 0;
+  padding: 8px 16px;
+  border: 2px dashed rgba(42, 27, 61, 0.3);
+  border-radius: 14px;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+}
+
+/* Your Christmas Tree, in the Wardrobe */
+.scr-xtree__jump {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px auto 8px;
+}
+
+.scr-xtree {
+  scroll-margin-top: 8px;
+  margin-top: 22px;
+  outline: none;
+}
+
+.scr-xtree .scr-chipcount {
+  white-space: nowrap;
+}
+
+.scr-xtree__blurb {
+  margin: 0 0 10px;
+  color: var(--ink-soft);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.scr-xtree__play {
+  display: grid;
+  grid-template-columns: minmax(0, 330px) minmax(0, 1fr);
+  align-items: start;
+  gap: 18px 22px;
+}
+
+.scr-xtree__tree {
+  position: relative;
+  width: 100%;
+  max-width: 330px;
+  aspect-ratio: 300 / 340;
+  margin: 0 auto;
+  border: var(--line);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 15% 16%, #fff 0 1.5px, transparent 2px),
+    radial-gradient(circle at 84% 12%, #fff 0 1.2px, transparent 1.8px),
+    radial-gradient(circle at 90% 44%, #fff 0 1.6px, transparent 2.2px),
+    radial-gradient(circle at 8% 52%, #fff 0 1px, transparent 1.6px),
+    linear-gradient(#1f2860, #3a4aa0);
+  box-shadow: 0 5px 0 var(--ink);
+}
+
+.scr-xtree__art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* the spots sit over the drawing; the sizes are shares of its width so they
+   stay on their branches, and never smaller than a fingertip */
+.scr-xtree__spot {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 15%;
+  min-width: 40px;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px dashed rgba(255, 255, 255, 0.75);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  translate: -50% -50%;
+  cursor: pointer;
+  transition: scale 0.12s;
+}
+
+.scr-xtree__spot:hover {
+  scale: 1.1;
+}
+
+.scr-xtree__spot.has-bauble {
+  border-color: transparent;
+  background: none;
+}
+
+.scr-xtree__spot[aria-pressed='true'] {
+  border: 3px solid var(--gold);
+  background: rgba(255, 201, 74, 0.45);
+  animation: scr-pulse 1.1s ease-in-out infinite;
+}
+
+.scr-xtree__side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.scr-xtree__say {
+  min-height: 3.1em;
+  margin: 0;
+  padding: 8px 14px;
+  border: var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.scr-xtree__shelf {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 8px;
+}
+
+.scr-xtree__tile {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 2px solid var(--ink);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--ink);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: translate 0.08s;
+}
+
+button.scr-xtree__tile:active {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.scr-xtree__tile--rare {
+  background: var(--sky);
+}
+
+.scr-xtree__tile--legendary {
+  background: var(--butter);
+}
+
+.scr-xtree__tile[aria-pressed='true'] {
+  outline: 4px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.scr-xtree__tile.is-unknown {
+  border-style: dashed;
+  box-shadow: none;
+  font-size: 1.3rem;
+  font-weight: 700;
+  cursor: default;
+  opacity: 0.6;
+}
+
+.scr-xtree__tick {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* a glass bauble in CSS: --a is its colour, --b the accent. The pattern is the
+   background; the <i> carries the shine, and the star of a starry one. */
+.scr-bauble {
+  position: relative;
+  display: block;
+  width: 72%;
+  aspect-ratio: 1;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--b), var(--a) 62%);
+}
+
+/* the little metal cap */
+.scr-bauble::before {
+  content: '';
+  position: absolute;
+  top: -14%;
+  left: 50%;
+  width: 30%;
+  height: 16%;
+  border: 2px solid var(--ink);
+  border-radius: 3px 3px 0 0;
+  background: var(--gold);
+  translate: -50% 0;
+}
+
+.scr-bauble::after {
+  content: '';
+  position: absolute;
+  top: 14%;
+  left: 18%;
+  width: 28%;
+  height: 20%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  rotate: -30deg;
+}
+
+.scr-bauble i {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--b);
+  font-size: 0.8em;
+  font-style: normal;
+  line-height: 1;
+}
+
+.scr-bauble[data-pattern='stripes'] {
+  background: repeating-linear-gradient(-35deg, var(--a) 0 22%, var(--b) 22% 40%);
+}
+
+.scr-bauble[data-pattern='dots'] {
+  background:
+    radial-gradient(circle, var(--b) 0 22%, transparent 26%) 0 0 / 44% 44%,
+    var(--a);
+}
+
+.scr-bauble[data-pattern='stars'] {
+  background: var(--a);
+}
+
+.scr-bauble[data-pattern='swirl'] {
+  background: repeating-conic-gradient(var(--a) 0 36deg, var(--b) 0 72deg);
+}
+
+.scr-bauble[data-pattern='glitter'] {
+  background:
+    radial-gradient(circle, var(--b) 0 8%, transparent 11%) 0 0 / 26% 26%,
+    radial-gradient(circle, #fff 0 6%, transparent 9%) 13% 16% / 34% 34%,
+    var(--a);
+}
+
+/* ==========================================================================
+   ADVENT CALENDAR
+   ========================================================================== */
+
+.scr-advent {
+  width: min(760px, 100%);
+}
+
+.scr-advent__say {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, 100%);
+  /* room for the longest message, so the doors never move under a finger */
+  min-height: 92px;
+  padding: 8px 14px;
+  border: var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 4px 0 var(--ink);
+  text-align: left;
+}
+
+.scr-advent__art {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  font-size: 2.1rem;
+  line-height: 1;
+  animation: scr-pop 0.4s cubic-bezier(0.3, 1.5, 0.5, 1) backwards;
+}
+
+.scr-advent__words {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.scr-advent__words b {
+  font-size: 1.1rem;
+}
+
+.scr-advent__words span {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.scr-choc {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  color: var(--ink);
+}
+
+.scr-advent__doors {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  padding: 8px 2px 6px;
+}
+
+.scr-door {
+  --door: #c9303e;
+  --door2: #e8515e;
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, var(--door2), var(--door));
+  box-shadow: 0 4px 0 var(--ink);
+  color: #fff;
+  cursor: pointer;
+  perspective: 500px;
+  transition: translate 0.08s;
+}
+
+.scr-door[data-tone='1'] {
+  --door: #1d7652;
+  --door2: #2a9d6f;
+}
+
+.scr-door[data-tone='2'] {
+  --door: #2459b3;
+  --door2: #3a7fe0;
+}
+
+.scr-door[data-tone='3'] {
+  --door: #6a3fb3;
+  --door2: #8a5cf6;
+}
+
+.scr-door.is-last {
+  --door: #b97f12;
+  --door2: #e0a21a;
+}
+
+.scr-door:active {
+  translate: 0 3px;
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+/* the door's frame, cut into the card */
+.scr-door::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  border-radius: 9px;
+  pointer-events: none;
+}
+
+.scr-door__num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+.scr-door.is-locked {
+  box-shadow: 0 3px 0 rgba(42, 27, 61, 0.55);
+  filter: saturate(0.5) brightness(0.92);
+}
+
+/* ready: a gold glow, drawn on its own layer so only its opacity changes */
+.scr-door.is-ready::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 3px solid var(--gold);
+  border-radius: 18px;
+  box-shadow: 0 0 12px 2px rgba(255, 201, 74, 0.8);
+  pointer-events: none;
+  animation: scr-dotglow 1.6s ease-in-out infinite;
+}
+
+.scr-door.is-opened {
+  background:
+    radial-gradient(rgba(138, 90, 51, 0.16) 1.2px, transparent 1.7px) 0 0 / 10px 10px,
+    #fff7e6;
+  color: var(--ink);
+}
+
+.scr-door.is-opened::before {
+  border-color: rgba(42, 27, 61, 0.14);
+}
+
+.scr-door.is-opened .scr-door__num {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  text-shadow: none;
+}
+
+.scr-door__choc {
+  display: block;
+  width: 66%;
+  height: 66%;
+}
+
+.scr-door.is-wiggle {
+  animation: scr-shake 0.42s ease;
+}
+
+.scr-door.is-boing {
+  animation: scr-jelly 0.45s ease;
+}
+
+/* the door swinging open, once, over the chocolate behind it */
+.scr-door__flap {
+  position: absolute;
+  inset: -3px;
+  display: grid;
+  place-items: center;
+  border: var(--line);
+  border-radius: 14px;
+  background: linear-gradient(145deg, var(--door2), var(--door));
+  color: #fff;
+  font-size: 1.5rem;
+  font-weight: 700;
+  transform-origin: left center;
+  animation: scr-door-open 0.65s ease-in forwards;
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+
+.scr-door__flap[data-tone='0'] {
+  --door: #c9303e;
+  --door2: #e8515e;
+}
+
+.scr-door.is-last .scr-door__flap {
+  --door: #b97f12;
+  --door2: #e0a21a;
+}
+
+@keyframes scr-door-open {
+  to {
+    opacity: 0;
+    transform: rotateY(-115deg);
+  }
+}
+
+@keyframes scr-dotglow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 /* ==========================================================================
@@ -5930,6 +6537,10 @@ p .scr-key {
     grid-template-columns: 1fr;
   }
 
+  .scr-xtree__play {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .scr-wardrobe__preview {
     position: relative;
   }
@@ -6031,6 +6642,11 @@ p .scr-key {
     gap: 6px;
   }
 
+  .scr-advent__doors {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
   .scr-track__inner {
     min-width: 380px;
   }
@@ -6126,6 +6742,16 @@ p .scr-key {
 @media (max-width: 420px) {
   .scr-tab > span {
     display: none;
+  }
+
+  /* four Workshop tabs on one row */
+  .scr-tabs {
+    gap: 4px;
+  }
+
+  .scr-tab {
+    padding: 6px 8px;
+    font-size: 0.88rem;
   }
 
   .scr-chip {
@@ -6277,6 +6903,23 @@ p .scr-key {
 
   .scr-titleauth .scr-btn {
     min-height: 40px;
+  }
+
+  /* December's sixth button: snugger again, so the title still fits */
+  .scr-menu--cloud.scr-menu--advent {
+    gap: 4px;
+  }
+
+  .scr-menu--cloud.scr-menu--advent .scr-btn {
+    min-height: 37px;
+    padding-top: 0.3em;
+    padding-bottom: 0.35em;
+  }
+
+  .scr-menu--cloud.scr-menu--advent .scr-btn--big {
+    min-height: 48px;
+    padding-top: 0.4em;
+    padding-bottom: 0.45em;
   }
 }
 

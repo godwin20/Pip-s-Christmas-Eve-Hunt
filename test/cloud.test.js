@@ -578,6 +578,34 @@ describe('createCloud skips unchanged saves', () => {
     expect(t.sdk.store['players/anon1'].save.nights).toBe(7);
   });
 
+  it('skips a write when another device found the same baubles in its own order', async () => {
+    const t = setup({ save: makeSave({ foundBaubles: ['ruby', 'icicle'] }) });
+    await t.cloud.start();
+    const saveWrites = () => t.sdk.writes.filter((w) => w === 'players/anon1').length;
+    expect(saveWrites()).toBe(1);
+
+    t.sdk.store['players/anon1'].save.foundBaubles = ['icicle', 'ruby'];
+    expect(await t.cloud.markDirty({ now: true })).toBe(true);
+    expect(saveWrites()).toBe(1);
+    expect(t.save.foundBaubles).toEqual(['ruby', 'icicle']); // this device keeps its own order
+    expect(t.replaced).toBe(0);
+  });
+
+  it('writes once to fill in the new fields on a save from an older version', async () => {
+    const t = setup({ save: makeSave({ candyEarned: 25, pets: { puppy: 2 } }) });
+    await t.cloud.start();
+    const saveWrites = () => t.sdk.writes.filter((w) => w === 'players/anon1').length;
+    const old = { ...t.sdk.store['players/anon1'].save };
+    for (const key of ['candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent']) delete old[key];
+    t.sdk.store['players/anon1'].save = old;
+
+    expect(await t.cloud.markDirty({ now: true })).toBe(true);
+    expect(saveWrites()).toBe(2);
+    expect(t.sdk.store['players/anon1'].save).toMatchObject({ candyEarned: 25, pets: { puppy: 2 }, advent: null });
+    expect(await t.cloud.markDirty({ now: true })).toBe(true);
+    expect(saveWrites()).toBe(2);
+  });
+
   it('still pulls what another device added, without writing it back', async () => {
     const t = setup();
     await t.cloud.start();

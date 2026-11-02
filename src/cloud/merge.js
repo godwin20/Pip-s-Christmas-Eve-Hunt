@@ -2,6 +2,9 @@
 // the rules that decide what survives two devices are easy to unit test.
 
 import { spentOnUpgrades, MAX_LEVEL } from '../game/upgrades.js';
+import { spentCandy, activePetId } from '../game/pets.js';
+import { TREE_SLOTS } from '../game/baubles.js';
+import { cleanAdvent } from '../game/advent.js';
 import { defaultSave } from '../core/save.js';
 import { isValidNameParts, randomNameParts } from './names.js';
 
@@ -16,6 +19,13 @@ export const CLOUD_LIMITS = {
   unlocked: 20,
   wardrobe: 20,
   idLength: 64,
+  pets: 10,
+  petLevel: 5,
+  foundBaubles: 24,
+  tree: 12,
+  adventDoors: 24,
+  adventYearMin: 2026,
+  adventYearMax: 2100,
 };
 
 export const BOARD_LIMITS = {
@@ -25,7 +35,7 @@ export const BOARD_LIMITS = {
   nights: 100000,
 };
 
-const COUNTERS = ['coinsEarned', 'totalPresents', 'totalCrackers', 'nights', 'bestPresentsInNight'];
+const COUNTERS = ['coinsEarned', 'candyEarned', 'totalPresents', 'totalCrackers', 'nights', 'bestPresentsInNight'];
 
 // ---------------------------------------------------------------- cleaning
 
@@ -71,6 +81,33 @@ function cleanUpgrades(map) {
   return out;
 }
 
+// Pets run from level 1, so unlike an upgrade a 0 can't be kept: the rules
+// refuse it, and a pet at 0 isn't owned anyway.
+function cleanPets(map) {
+  const out = {};
+  if (!isPlainObject(map)) return out;
+  for (const [id, lvl] of Object.entries(map)) {
+    const level = wholeNum(lvl, CLOUD_LIMITS.petLevel);
+    if (cleanId(id) !== null && level >= 1) out[id] = level;
+  }
+  return out;
+}
+
+// Fixed spots only, each design once, in slot order so two devices that hold
+// the same bad data keep the same half of it.
+function cleanTree(map) {
+  const out = {};
+  if (!isPlainObject(map)) return out;
+  const used = new Set();
+  for (const slot of TREE_SLOTS) {
+    const id = Object.hasOwn(map, slot) ? cleanId(map[slot]) : null;
+    if (id === null || used.has(id)) continue;
+    used.add(id);
+    out[slot] = id;
+  }
+  return out;
+}
+
 // Wardrobe switches are true/false only; anything else is treated as unset.
 function cleanWardrobe(map) {
   const out = {};
@@ -105,6 +142,11 @@ function cloudPart(save) {
   part.foundJokes = cleanIds(s.foundJokes).slice(0, CLOUD_LIMITS.foundJokes);
   part.unlocked = cleanIds(s.unlocked).slice(0, CLOUD_LIMITS.unlocked);
   part.wardrobe = capKeys(cleanWardrobe(s.wardrobe), CLOUD_LIMITS.wardrobe);
+  part.pets = capKeys(cleanPets(s.pets), CLOUD_LIMITS.pets);
+  part.foundBaubles = cleanIds(s.foundBaubles).slice(0, CLOUD_LIMITS.foundBaubles);
+  part.tree = cleanTree(s.tree);
+  part.treeSetAt = wholeNum(s.treeSetAt, CLOUD_LIMITS.setAt);
+  part.advent = cleanAdvent(s.advent);
   part.profile = cleanProfile(s.profile);
   return part;
 }
@@ -126,13 +168,24 @@ function settleCoins(save) {
   return save;
 }
 
+// The same for candy: candy === candyEarned - spentCandy(pets). activePet stays
+// on this device, so it goes when the merged save no longer owns that pet (a
+// reset on another device, say).
+function settleCandy(save) {
+  const spent = spentCandy(save.pets);
+  save.candyEarned = Math.max(spent, save.candyEarned);
+  save.candy = Math.max(0, save.candyEarned - spent);
+  save.activePet = activePetId(save);
+  return save;
+}
+
 // ---------------------------------------------------------------- merging
 
 // Own keys only: an id like 'constructor' must not read Object.prototype.
-function mergeUpgrades(l, r) {
+function mergeLevels(l, r, cap) {
   const out = { ...l };
   for (const [id, lvl] of Object.entries(r)) out[id] = Math.max(Object.hasOwn(out, id) ? out[id] : 0, lvl);
-  return capKeys(out, CLOUD_LIMITS.upgrades);
+  return capKeys(out, cap);
 }
 
 function mergeWardrobe(l, r) {
@@ -149,13 +202,31 @@ function pickProfile(l, r) {
   return l.setAt > r.setAt ? l : r;
 }
 
+// One tree is one choice, so the newest comes across whole, empty spots
+// included. On a tie the remote one wins, for the same reason as pickProfile.
+function pickTree(l, r) {
+  const { tree, treeSetAt } = l.treeSetAt > r.treeSetAt ? l : r;
+  return { tree, treeSetAt };
+}
+
+// The same year adds up. A newer year starts over, so last year's doors go.
+function mergeAdvent(l, r) {
+  if (!l || !r) return l || r;
+  if (l.year !== r.year) return l.year > r.year ? l : r;
+  return cleanAdvent({ year: l.year, opened: [...l.opened, ...r.opened] });
+}
+
 function mergeFields(l, r) {
   const out = { epoch: l.epoch };
   for (const key of COUNTERS) out[key] = Math.max(l[key], r[key]);
-  out.upgrades = mergeUpgrades(l.upgrades, r.upgrades);
+  out.upgrades = mergeLevels(l.upgrades, r.upgrades, CLOUD_LIMITS.upgrades);
   out.foundJokes = cleanIds(l.foundJokes, r.foundJokes).slice(0, CLOUD_LIMITS.foundJokes);
   out.unlocked = cleanIds(l.unlocked, r.unlocked).slice(0, CLOUD_LIMITS.unlocked);
   out.wardrobe = mergeWardrobe(l.wardrobe, r.wardrobe);
+  out.pets = mergeLevels(l.pets, r.pets, CLOUD_LIMITS.pets);
+  out.foundBaubles = cleanIds(l.foundBaubles, r.foundBaubles).slice(0, CLOUD_LIMITS.foundBaubles);
+  Object.assign(out, pickTree(l, r));
+  out.advent = mergeAdvent(l.advent, r.advent);
   out.profile = pickProfile(l.profile, r.profile);
   return out;
 }
@@ -173,17 +244,18 @@ export function mergeSaves(local, remote) {
   const l = cloudPart(local);
   const r = cloudPart(remote);
   const fields = l.epoch === r.epoch ? mergeFields(l, r) : newerEpoch(l, r);
-  return settleCoins({ ...copySave(local), ...fields });
+  return settleCandy(settleCoins({ ...copySave(local), ...fields }));
 }
 
-// The cloud copy: no coins (derived), settings (per device) or version.
+// The cloud copy: no coins or candy (derived), settings or activePet (per
+// device) or version.
 export function toCloudSave(save) {
   return cloudPart(save);
 }
 
 // A full local save from a cloud copy, keeping this device's own fields.
 export function fromCloudSave(cloud, local) {
-  return settleCoins({ ...copySave(local), ...cloudPart(cloud) });
+  return settleCandy(settleCoins({ ...copySave(local), ...cloudPart(cloud) }));
 }
 
 // Leaderboard numbers, clamped so a write always passes firestore.rules.

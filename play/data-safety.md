@@ -98,7 +98,7 @@ Tick exactly these. Everything else stays unticked.
 | App activity | In-app search history | No | There is no search. |
 | App activity | Installed apps | No | |
 | App activity | Other user-generated content | **Yes** | Feedback someone chooses to send: the stars, topic, quick notes, the optional grown-up's note (up to 300 characters) and the map number it was about. |
-| App activity | Other actions | **Yes** | Game progress the cloud save and leaderboard need: coins earned, presents, crackers, nights, best night, upgrades, jokes found, milestones, wardrobe and whether the snow name is hidden. (The snow name itself is declared under Name.) |
+| App activity | Other actions | **Yes** | Game progress the cloud save and leaderboard need: coins and candy earned, presents, crackers, nights, best night, upgrades, pets, jokes and baubles found, the Christmas tree, advent calendar doors opened, milestones, wardrobe and whether the snow name is hidden. (The snow name itself is declared under Name.) |
 | Web browsing | Web browsing history | No | |
 | App info and performance | Crash logs, Diagnostics | No | No crash reporting or performance monitoring. |
 | App info and performance | Other app performance data | **Yes** | Sent with feedback only: the device type (touch or keyboard) and the app version. |

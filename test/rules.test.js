@@ -29,6 +29,8 @@ import { defaultSave, syncCoinLedger } from '../src/core/save.js';
 import { JOKES } from '../src/data/jokes.js';
 import { MILESTONES } from '../src/game/milestones.js';
 import { UPGRADES } from '../src/game/upgrades.js';
+import { PETS } from '../src/game/pets.js';
+import { BAUBLES, TREE_SLOTS } from '../src/game/baubles.js';
 import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, cleanFeedback } from '../src/cloud/feedback.js';
 
 // Each case is a round trip to the emulator; seeding the board takes a moment.
@@ -295,6 +297,169 @@ describe('players/{uid}: junk a cheater might send', () => {
     await assertFails(writePlayer(ALICE, playerDoc({ totalPresents: 1e12 })));
     await assertFails(writePlayer(ALICE, playerDoc({ nights: Number.MAX_SAFE_INTEGER })));
     await assertFails(writePlayer(ALICE, playerDoc({ bestPresentsInNight: -5 })));
+  });
+});
+
+describe('players/{uid}: candy, pets, baubles and the calendar', () => {
+  const NEW_KEYS = ['candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent'];
+
+  // What a version of the game from before these fields writes.
+  function oldSave(over = {}) {
+    const copy = cloudSave(over);
+    for (const key of NEW_KEYS) delete copy[key];
+    return copy;
+  }
+
+  const filled = {
+    candyEarned: 250,
+    pets: { puppy: 2, kitten: 5 },
+    foundBaubles: ['ruby', 'icicle'],
+    tree: { s0: 'ruby', s11: 'icicle' },
+    treeSetAt: 1766000000000,
+    advent: { year: 2026, opened: [1, 2, 24] },
+  };
+
+  it('still accepts the old shape, for versions of the game cached on devices', async () => {
+    await assertSucceeds(writePlayer(ALICE, { v: 1, save: oldSave(), updatedAt: serverTimestamp() }));
+  });
+
+  it('lets an old version update a new-shape save, and the other way round', async () => {
+    await assertSucceeds(writePlayer(ALICE, playerDoc(filled)));
+    await assertSucceeds(writePlayer(ALICE, { v: 1, save: oldSave(), updatedAt: serverTimestamp() }));
+    await assertSucceeds(writePlayer(ALICE, playerDoc(filled)));
+  });
+
+  it('still needs every old key', async () => {
+    for (const key of ['epoch', 'coinsEarned', 'totalPresents', 'totalCrackers', 'nights', 'bestPresentsInNight', 'upgrades', 'foundJokes', 'unlocked', 'wardrobe', 'profile']) {
+      await assertFails(writePlayer(ALICE, { v: 1, save: without(cloudSave(filled), key), updatedAt: serverTimestamp() }));
+    }
+  });
+
+  it('accepts the new shape, full and with any new key left out', async () => {
+    await assertSucceeds(writePlayer(ALICE, playerDoc(filled)));
+    for (const key of NEW_KEYS) {
+      await assertSucceeds(writePlayer(ALICE, { v: 1, save: without(cloudSave(filled), key), updatedAt: serverTimestamp() }));
+    }
+  });
+
+  it('accepts the empty values a new player sends', async () => {
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ candyEarned: 0, pets: {}, foundBaubles: [], tree: {}, treeSetAt: 0, advent: null })));
+  });
+
+  it('accepts every real id at once', async () => {
+    const ids = BAUBLES.map((b) => b.id);
+    const all = cloudSave({
+      candyEarned: 1000000000,
+      pets: Object.fromEntries(PETS.map((p) => [p.id, 5])),
+      foundBaubles: ids,
+      tree: Object.fromEntries(TREE_SLOTS.map((slot, i) => [slot, ids[i]])),
+      treeSetAt: 10000000000000,
+      advent: { year: 2100, opened: Array.from({ length: 24 }, (_, i) => i + 1) },
+      foundJokes: JOKES.map((j) => j.id),
+      unlocked: MILESTONES.map((m) => m.id),
+      upgrades: Object.fromEntries(UPGRADES.map((u) => [u.id, 3])),
+      wardrobe: Object.fromEntries(MILESTONES.map((m) => [m.id, true])),
+    });
+    await assertSucceeds(writePlayer(ALICE, { v: 1, save: all, updatedAt: serverTimestamp() }));
+  });
+
+  it('accepts whatever the client cleans a messy save into', async () => {
+    const messy = toCloudSave({
+      ...defaultSave(),
+      candyEarned: -40,
+      pets: { kitten: 0, reindeer: 'x', penguin: 12, 'a b': 1 },
+      foundBaubles: ['ruby', 'ruby', 'a|b', null, 7],
+      tree: { s0: 'ruby', s1: 'ruby', s2: 'a b', s99: 'icicle' },
+      treeSetAt: 1e20,
+      advent: { year: 2026, opened: [3, 3, 0, 25, 'x'], note: 'hi' },
+    });
+    expect(messy.pets).toEqual({ penguin: 5 });
+    await assertSucceeds(writePlayer(ALICE, { v: 1, save: messy, updatedAt: serverTimestamp() }));
+    await assertSucceeds(
+      writePlayer(ALICE, { v: 1, save: toCloudSave({ ...defaultSave(), advent: { year: 1999, opened: [1] } }), updatedAt: serverTimestamp() }),
+    );
+  });
+
+  it('refuses fields that never leave the device', async () => {
+    await assertFails(writePlayer(ALICE, playerDoc({ candy: 10 })));
+    await assertFails(writePlayer(ALICE, playerDoc({ activePet: 'kitten' })));
+  });
+
+  it('refuses a bad candyEarned', async () => {
+    for (const bad of [-1, 1000000001, 1.5, '10', null, { n: 1 }]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ candyEarned: bad })));
+    }
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ candyEarned: 1000000000 })));
+  });
+
+  it('refuses bad pets', async () => {
+    const pets = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`p${i}`, 1]));
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ pets: pets(10) })));
+    await assertFails(writePlayer(ALICE, playerDoc({ pets: pets(11) })));
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ pets: { kitten: 1, penguin: 5 } })));
+    for (const level of [0, 6, -1, 1.5, '1', true, null, { lvl: 1 }]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ pets: { kitten: level } })));
+    }
+    for (const key of ['two words', 'a|b', 'x'.repeat(65)]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ pets: { [key]: 1 } })));
+    }
+    for (const bad of [['kitten'], 'kitten', 3, null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ pets: bad })));
+    }
+  });
+
+  it('refuses bad foundBaubles', async () => {
+    const ids = (n) => Array.from({ length: n }, (_, i) => `b${i}`);
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ foundBaubles: ids(24) })));
+    await assertFails(writePlayer(ALICE, playerDoc({ foundBaubles: ids(25) })));
+    for (const bad of [['ruby', 'ruby'], ['ruby', 7], [null], [true], ['two words'], ['a|b'], [''], ['x'.repeat(65)], { ruby: true }, 'ruby', null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ foundBaubles: bad })));
+    }
+  });
+
+  it('refuses a bad tree', async () => {
+    const full = Object.fromEntries(TREE_SLOTS.map((slot, i) => [slot, `b${i}`]));
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ tree: full })));
+    await assertFails(writePlayer(ALICE, playerDoc({ tree: { ...full, s12: 'extra' } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ tree: { s12: 'ruby' } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ tree: { top: 'ruby' } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ tree: { s0: 'ruby', s1: 'ruby' } }))); // a design hangs once
+    for (const value of [7, null, true, '', 'two words', 'a|b', 'x'.repeat(65), { id: 'ruby' }]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ tree: { s0: value } })));
+    }
+    for (const bad of [['ruby'], 'ruby', null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ tree: bad })));
+    }
+  });
+
+  it('refuses a bad treeSetAt', async () => {
+    for (const bad of [-1, 10000000000001, 1.5, '5', null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ treeSetAt: bad })));
+    }
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ treeSetAt: 10000000000000 })));
+  });
+
+  it('refuses a bad calendar', async () => {
+    for (const year of [2026, 2100]) await assertSucceeds(writePlayer(ALICE, playerDoc({ advent: { year, opened: [] } })));
+    for (const year of [2025, 2101, 2026.5, '2026', null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ advent: { year, opened: [] } })));
+    }
+    const doors = Array.from({ length: 24 }, (_, i) => i + 1);
+    await assertSucceeds(writePlayer(ALICE, playerDoc({ advent: { year: 2026, opened: doors } })));
+    for (const opened of [[0], [25], [-1], [1.5], ['1'], [null], [true], [1, 1], [...doors, 24], [...doors, 25], 'all', { 1: true }, null]) {
+      await assertFails(writePlayer(ALICE, playerDoc({ advent: { year: 2026, opened } })));
+    }
+    await assertFails(writePlayer(ALICE, playerDoc({ advent: { year: 2026 } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ advent: { opened: [] } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ advent: { year: 2026, opened: [], extra: 1 } })));
+    await assertFails(writePlayer(ALICE, playerDoc({ advent: 2026 })));
+    await assertFails(writePlayer(ALICE, playerDoc({ advent: [2026] })));
+  });
+
+  it('does not touch the leaderboard entry shape', async () => {
+    await assertSucceeds(writeEntry(ALICE, entry()));
+    await assertFails(writeEntry(BOB, entry({ candyEarned: 5 }), BOB));
+    await assertFails(writeEntry(BOB, entry({ pets: {} }), BOB));
   });
 });
 

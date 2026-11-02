@@ -1,6 +1,8 @@
 // Santa's Workshop upgrades. Each has 3 levels; computeStats() turns the
 // owned levels into the numbers gameplay reads.
 
+import { petPerks } from './pets.js';
+
 export const MAX_LEVEL = 3;
 
 export const UPGRADES = [
@@ -118,18 +120,22 @@ export const BASE_NIGHT_SECONDS = 300;
 
 export function computeStats(save) {
   const L = (id) => upgradeLevel(save, id);
+  const perks = petPerks(save); // the pets add to the same numbers as the upgrades
   return {
     radarRange: [25, 40, 60, 90][L('radar')],
     radarShowCrackers: L('crackerSense') >= 1,
     radarPingSeconds: L('crackerSense') >= 2 ? 1.5 : 3,
     radarRarity: L('crackerSense') >= 3,
     compassLevel: L('compass'), // 0 none, 1 nearest present, 2 nearest anything, 3 + distance
-    speedMult: 1 + 0.15 * L('speedy'),
+    speedMult: (1 + 0.15 * L('speedy')) * perks.speedMult,
     iceGrip: L('speedy') >= 1,
     nightSeconds: BASE_NIGHT_SECONDS + 30 * L('longerNight'),
     luck: L('luckyBow'), // 0..3
     magnetRadius: [0, 2, 3.5, 5][L('magnet')],
     extraPresents: 2 * L('sack'),
     jokeLuck: L('jokeDetector'), // 0..3
+    sniffMult: perks.sniffMult, // how far the Snow Puppy sniffs, as a multiple
+    giftSeconds: perks.giftSeconds, // how often the Frost Kitten brings coins
+    giftCoins: perks.giftCoins, // 0 unless the Frost Kitten came along
   };
 }

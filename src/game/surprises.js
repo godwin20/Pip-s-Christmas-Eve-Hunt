@@ -6,6 +6,7 @@
 // Companions are pure presentation; every coin is handed out here.
 
 import * as THREE from 'three';
+import { meetPuppy } from './pets.js';
 
 export const SURPRISES = [
   {
@@ -290,6 +291,7 @@ const HANDLERS = {
       return `Your puppy found a friend! +${T.puppyFriendCoins} coins`;
     }
     invoke(c, 'spawnPuppy');
+    if (ctx.save) meetPuppy(ctx.save); // from now on it can be fed in the Workshop
     return 'A snow puppy will follow you all night and sniff out treats!';
   },
 

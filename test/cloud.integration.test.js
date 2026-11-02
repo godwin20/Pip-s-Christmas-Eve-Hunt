@@ -5,13 +5,16 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { initializeTestEnvironment } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { linkWithCredential, reauthenticateWithCredential } from 'firebase/auth';
 import { createCloud } from '../src/cloud/cloud.js';
 import * as firebaseSdk from '../src/cloud/firebase-sdk.js';
 import { toCloudSave, boardScores, ensureProfile } from '../src/cloud/merge.js';
 import { defaultSave, syncCoinLedger } from '../src/core/save.js';
 import { spentOnUpgrades } from '../src/game/upgrades.js';
+import { spentCandy, addCandy, buyPet, setActivePet } from '../src/game/pets.js';
+import { collectBauble, placeBauble } from '../src/game/baubles.js';
+import { openDoor } from '../src/game/advent.js';
 import { EMULATOR_PROJECT_ID } from '../src/cloud/config.js';
 
 vi.setConfig({ testTimeout: 60000, hookTimeout: 60000 });
@@ -275,6 +278,88 @@ describe('cloud facade on the emulators', () => {
     expect((await readDoc(`players/${googleUid}`)).save.totalPresents).toBe(9); // pushed before leaving
     expect(await readDoc(`players/${B.cloud.uid}`)).not.toBeNull();
     expect((await B.cloud.signOutToFresh()).ok).toBe(false); // anonymous: nothing to sign out of
+  });
+});
+
+describe('candy, pets, baubles and the calendar on the emulators', () => {
+  const DEC_7 = new Date(2026, 11, 7, 12);
+  const NEW_KEYS = ['candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent'];
+  let phone;
+  let tablet;
+  let uid;
+
+  function candyOk(s) {
+    return s.candy === s.candyEarned - spentCandy(s.pets) && s.candy >= 0;
+  }
+
+  // The rest of the game's progress on a device, in place of a night's play.
+  function play(save) {
+    addCandy(save, 200);
+    collectBauble(save, 'ruby');
+    placeBauble(save, 's0', 'ruby', 1766000000000);
+    openDoor(save, 5, DEC_7);
+  }
+
+  it('saves all of it through the real rules', async () => {
+    const save = makeSave({ profile: { adj: 1, noun: 2, num: 3, hidden: false, setAt: 1000 } });
+    play(save);
+    expect(buyPet(save, 'kitten')).toBe(true);
+    expect(setActivePet(save, 'kitten')).toBe(true);
+    phone = device('candyPhone', save, 'candy-google', 'Candy Tester');
+    expect(await phone.cloud.start()).toBe(true);
+    expect(phone.cloud.status).toMatchObject({ state: 'synced', error: null });
+    expect(await phone.cloud.linkGoogle()).toEqual({ ok: true, switched: false });
+    uid = phone.cloud.uid;
+    expect((await readDoc(`players/${uid}`)).save).toEqual(toCloudSave(phone.save));
+  });
+
+  it('merges a second device into the same account', async () => {
+    const save = makeSave();
+    addCandy(save, 90);
+    collectBauble(save, 'icicle');
+    placeBauble(save, 's3', 'icicle', 1766000009999);
+    openDoor(save, 2, DEC_7);
+    expect(buyPet(save, 'reindeer')).toBe(true);
+    tablet = device('candyTablet', save, 'candy-google', 'Candy Tester');
+    expect(await tablet.cloud.start()).toBe(true);
+    expect(await tablet.cloud.linkGoogle()).toEqual({ ok: true, switched: true });
+    expect(tablet.cloud.uid).toBe(uid);
+
+    expect(await phone.cloud.markDirty({ now: true })).toBe(true);
+    for (const s of [phone.save, tablet.save]) {
+      expect(s.candyEarned).toBe(200);
+      expect(s.pets).toEqual({ kitten: 1, reindeer: 1 });
+      expect(s.candy).toBe(200 - 40 - 80);
+      expect([...s.foundBaubles].sort()).toEqual(['icicle', 'ruby']);
+      expect(s.tree).toEqual({ s3: 'icicle' }); // the newer tree
+      expect(s.advent).toEqual({ year: 2026, opened: [2, 5] });
+      expect(candyOk(s)).toBe(true);
+    }
+    expect(phone.save.activePet).toBe('kitten'); // this device's choice
+    expect(tablet.save.activePet).toBeNull();
+  });
+
+  it('a cached old version can still write, and the new fields come back', async () => {
+    const stored = (await readDoc(`players/${uid}`)).save;
+    const oldSave = { ...stored };
+    for (const key of NEW_KEYS) delete oldSave[key];
+    const asPlayer = env.authenticatedContext(uid).firestore();
+    await setDoc(doc(asPlayer, 'players', uid), { v: 1, save: oldSave, updatedAt: serverTimestamp() });
+    expect((await readDoc(`players/${uid}`)).save).not.toHaveProperty('pets');
+
+    expect(await phone.cloud.markDirty({ now: true })).toBe(true);
+    expect(phone.cloud.status).toMatchObject({ state: 'synced', error: null });
+    expect((await readDoc(`players/${uid}`)).save).toEqual(toCloudSave(phone.save));
+    expect(phone.save.pets).toEqual({ kitten: 1, reindeer: 1 });
+  });
+
+  it('a reset wins on the other device, and clears its pet choice', async () => {
+    phone.save = makeSave({ epoch: phone.save.epoch + 1, profile: phone.save.profile });
+    expect(await phone.cloud.resetEverywhere()).toEqual({ ok: true });
+    expect(await tablet.cloud.markDirty({ now: true })).toBe(true);
+    expect(tablet.save).toMatchObject({ candy: 0, candyEarned: 0, pets: {}, foundBaubles: [], tree: {}, advent: null, activePet: null });
+    expect(await phone.cloud.markDirty({ now: true })).toBe(true);
+    expect(phone.save).toMatchObject({ candy: 0, pets: {} });
   });
 });
 

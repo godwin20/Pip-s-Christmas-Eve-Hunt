@@ -1,6 +1,7 @@
 // Full-screen menus for Pip's Christmas Eve Hunt: Title, Results, Santa's
-// Workshop (Upgrades / Rewards / Wardrobe), Joke Gallery, Leaderboard,
-// Privacy, Pause and Help, plus the Feedback card over the title and results.
+// Workshop (Upgrades / Rewards / Pets / Wardrobe), Advent Calendar (December
+// only), Joke Gallery, Leaderboard, Privacy, Pause and Help, plus the Feedback
+// card over the title and results.
 // Everything is plain DOM + CSS (see screens.css): a
 // cosy storybook-scrapbook look with washi tape, ribbon banners, candy stripes
 // and CSS doodles of Pip.
@@ -11,6 +12,9 @@ import { SURPRISES } from '../game/surprises.js';
 import { UPGRADES, MAX_LEVEL, upgradeLevel, nextCost, buyUpgrade, computeStats } from '../game/upgrades.js';
 import { MILESTONES, getMilestone, isUnlocked, isActive, nextMilestone } from '../game/milestones.js';
 import { RARITY_COINS } from '../game/crackers.js';
+import { PETS, MAX_PET_LEVEL, PET_NOTE, petLevel, feedCost, buyPet, feedPet, activePetId, setActivePet, perkText } from '../game/pets.js';
+import { BAUBLES, TREE_SLOTS, TREE_ROWS, GOLDEN_STAR_ID, getBauble, foundCount, slotOf, placeBauble, removeBauble, treeSpots } from '../game/baubles.js';
+import { ADVENT_TUNING, DOOR_LAYOUT, getChocolate, isAdventTime, doorState, readyDoors, openedDoors, lockedDoorText } from '../game/advent.js';
 import { defaultSave } from '../core/save.js';
 import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } from '../cloud/names.js';
 import { PRIVACY_CONTACT } from '../cloud/config.js';
@@ -46,8 +50,12 @@ const SETTINGS = [
 const SHOP_TABS = [
   { id: 'upgrades', icon: '🛠️', label: 'Upgrades' },
   { id: 'rewards', icon: '🏆', label: 'Rewards' },
+  { id: 'pets', icon: '🐾', label: 'Pets' },
   { id: 'wardrobe', icon: '🧣', label: 'Wardrobe' },
 ];
+
+// The sound each pet makes when it is bought or fed (see src/core/audio.js).
+const PET_CRIES = { puppy: 'bark', kitten: 'meow', reindeer: 'bleat', penguin: 'cheep' };
 
 // Matches main.js / input.js: slide = Space or left Shift, interact = E /
 // Enter / click, Tab = peek at the Gallery, touch = left-side joystick.
@@ -55,7 +63,7 @@ const DEFAULT_CONTROLS = [
   { keys: ['W', 'A', 'S', 'D'], text: 'or the arrow keys to waddle about' },
   { keys: ['Drag'], text: 'the mouse (or a finger) to look around' },
   { keys: ['Wheel'], text: 'or pinch to zoom in and out' },
-  { keys: ['E', 'Click'], text: 'to pull a cracker or open a present' },
+  { keys: ['E', 'Click'], text: 'to pull a cracker, open a present, crack a candy cane or shake a tree' },
   { keys: ['Space', 'Shift'], text: 'hold while moving to belly-slide! Wheee!' },
   { keys: ['Tab'], text: 'to peek at your Joke Gallery' },
   { keys: ['Esc'], text: 'to pause the night' },
@@ -150,7 +158,7 @@ const TOAST_MS = 4500;
 
 // PWA notices (update ready, offline ready) appear only on these menus: never
 // over a night, its pause menu or the gallery peeked at from it.
-const NOTICE_SCREENS = new Set(['title', 'results', 'shop', 'gallery', 'leaderboard']);
+const NOTICE_SCREENS = new Set(['title', 'results', 'shop', 'advent', 'gallery', 'leaderboard']);
 const OFFLINE_NOTE_MS = 6000;
 
 // ---------------------------------------------------------------------------
@@ -224,10 +232,13 @@ function normaliseSave(s, fallback) {
   const save = s && typeof s === 'object' ? s : fallback;
   if (!save.upgrades || typeof save.upgrades !== 'object') save.upgrades = {};
   if (!save.wardrobe || typeof save.wardrobe !== 'object') save.wardrobe = {};
+  if (!save.pets || typeof save.pets !== 'object') save.pets = {};
+  if (!save.tree || typeof save.tree !== 'object') save.tree = {};
   if (!save.settings || typeof save.settings !== 'object') save.settings = { sfx: true, music: true, voice: true };
   if (!Array.isArray(save.foundJokes)) save.foundJokes = [];
   if (!Array.isArray(save.unlocked)) save.unlocked = [];
-  for (const k of ['coins', 'totalPresents', 'totalCrackers', 'nights', 'bestPresentsInNight']) {
+  if (!Array.isArray(save.foundBaubles)) save.foundBaubles = [];
+  for (const k of ['coins', 'candy', 'candyEarned', 'treeSetAt', 'totalPresents', 'totalCrackers', 'nights', 'bestPresentsInNight']) {
     if (!Number.isFinite(save[k])) save[k] = 0;
   }
   return save;
@@ -709,6 +720,78 @@ function coin() {
   return h('span', { class: 'scr-coin', 'aria-hidden': 'true' });
 }
 
+function sweet() {
+  return h('span', { class: 'scr-sweet', 'aria-hidden': 'true' });
+}
+
+// A bauble, drawn in CSS from its colours and pattern (.scr-bauble). Decoration:
+// whatever holds one says its name.
+function baubleEl(b) {
+  return h(
+    'span',
+    { class: 'scr-bauble', 'data-pattern': b.pattern, 'aria-hidden': 'true', style: { '--a': b.colours[0], '--b': b.colours[1] } },
+    h('i', null, b.pattern === 'stars' ? '★' : null)
+  );
+}
+
+// Each chocolate shape on a 48 x 48 grid. a = its main colour, b = the accent.
+const CHOC_DRAW = {
+  star: (a, b) =>
+    `<path d="M24 5l5.6 12.3 13.4 1.5-10 9.1 2.8 13.3L24 34.5l-11.8 6.7L15 27.9 5 18.8l13.4-1.5z" fill="${a}"/><circle cx="24" cy="25" r="5" fill="${b}" stroke="none"/>`,
+  heart: (a, b) =>
+    `<path d="M24 41C10 31 5 24 5 16.5 5 10 10 6 15.5 6c3.5 0 7 2 8.5 5 1.5-3 5-5 8.5-5C38 6 43 10 43 16.5 43 24 38 31 24 41z" fill="${a}"/><path d="M13 17l5 5 6-5 6 5 5-5" fill="none" stroke="${b}" stroke-width="3"/>`,
+  bell: (a, b) =>
+    `<circle cx="24" cy="40" r="4" fill="${b}"/><path d="M24 6c-7 0-11 6-11 13 0 9-3 13-6 17h34c-3-4-6-8-6-17 0-7-4-13-11-13z" fill="${a}"/><path d="M12.5 29h23" fill="none" stroke="${b}" stroke-width="3"/>`,
+  tree: (a, b) =>
+    `<path d="M24 4l11 14h-5l9 12h-7l10 12H6l10-12H9l9-12h-5z" fill="${a}"/><g fill="${b}" stroke="none"><circle cx="21" cy="19" r="2.2"/><circle cx="28" cy="27" r="2.2"/><circle cx="18" cy="33" r="2.2"/><circle cx="30" cy="37" r="2.2"/></g>`,
+  truffle: (a, b) =>
+    `<circle cx="24" cy="25" r="18" fill="${a}"/><path d="M11 19c4-6 9 4 13-2s9 5 13 1" fill="none" stroke="${b}" stroke-width="3.5"/><path d="M12 31c3 2 6 3 9 3" fill="none" stroke="${b}" stroke-width="2.5"/>`,
+  bar: (a, b) =>
+    `<rect x="6" y="9" width="36" height="30" rx="4" fill="${a}"/><path d="M18 9v30M30 9v30M6 24h36" fill="none" stroke="${b}" stroke-width="2.5"/>`,
+  coin: (a, b) =>
+    `<circle cx="24" cy="24" r="19" fill="${a}"/><circle cx="24" cy="24" r="13.5" fill="none" stroke="${b}" stroke-width="2.5"/><path d="M24 14.5l2.8 6.2 6.7.7-5 4.5 1.4 6.6-5.9-3.3-5.9 3.3 1.4-6.6-5-4.5 6.7-.7z" fill="${b}" stroke="none"/>`,
+  present: (a, b) =>
+    `<path d="M24 12c-3-7-13-8-13-3 0 4 7 4 13 3zm0 0c3-7 13-8 13-3 0 4-7 4-13 3z" fill="${b}"/><rect x="7" y="19" width="34" height="23" rx="3" fill="${a}"/><rect x="4" y="12" width="40" height="9" rx="3" fill="${a}"/><path d="M24 12v30" fill="none" stroke="${b}" stroke-width="6"/>`,
+};
+
+// A chocolate as inline SVG, from the fixed list in game/advent.js.
+export function chocolateHTML(choc) {
+  const draw = CHOC_DRAW[choc.shape] || CHOC_DRAW.truffle;
+  return `<svg class="scr-choc" viewBox="0 0 48 48" aria-hidden="true" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round">${draw(...choc.colours)}</svg>`;
+}
+
+// The Wardrobe's tree, on the same 300 x 340 grid as TREE_SPOT_ROWS below.
+const TREE_SVG = `<svg class="scr-xtree__art" viewBox="0 0 300 340" aria-hidden="true" stroke="#2a1b3d" stroke-width="4" stroke-linejoin="round">
+  <path d="M112 318h76l-8 18h-60z" fill="#d7263d"/>
+  <rect x="132" y="284" width="36" height="36" fill="#7a4a2b"/>
+  <path d="M150 150l140 138q-140 18-280 0z" fill="#1f8a4c"/>
+  <path d="M150 80l112 126q-112 16-224 0z" fill="#27a05a"/>
+  <path d="M150 26l76 104q-76 12-152 0z" fill="#31b56a"/>
+  <path d="M150 4l6.5 13.5 15 1.7-11 10 3 14.8-13.5-7.5-13.5 7.5 3-14.8-11-10 15-1.7z" fill="#ffc94a"/>
+</svg>`;
+
+// Bottom row first, as TREE_ROWS counts them: [height, half the row's width].
+const TREE_SPOT_ROWS = [
+  [262, 98],
+  [186, 72],
+  [114, 36],
+  [66, 0],
+];
+
+// Where each slot sits on the drawing, as percentages, so the buttons on top of
+// it line up at any size. Same order as TREE_SLOTS: left to right, bottom up.
+export function treeSpotPlaces() {
+  const places = [];
+  TREE_ROWS.forEach((n, row) => {
+    const [y, half] = TREE_SPOT_ROWS[row];
+    for (let i = 0; i < n; i++) {
+      const x = n === 1 ? 150 : 150 - half + (2 * half * i) / (n - 1);
+      places.push({ left: `${((x / 300) * 100).toFixed(2)}%`, top: `${((y / 340) * 100).toFixed(2)}%` });
+    }
+  });
+  return places;
+}
+
 function sceneHTML(save, { crown = true, wave = true, extras = true } = {}) {
   const c = cosmeticsOf(save);
   const mods = [c.candy && 'is-candy', c.party && 'is-party', c.trail && 'has-trail', c.puppy && 'has-puppy']
@@ -763,7 +846,13 @@ export function createScreens(root, deps = {}) {
     helpBack: 'title',
     shopBack: 'title',
     shopTab: 'upgrades',
-    shop: null, // { panel, purseNum, purse, tabs }
+    shop: null, // { panel, purseNum, purseIcon, purseWord, purse, tabs }
+    // the Wardrobe tree's half-made choice: a spot or a bauble tapped first
+    treePick: { slot: null, bauble: null },
+    petTap: { id: null, at: 0 }, // the last Buy or Feed, so a double-tap only spends once
+    advent: null, // refs of the open calendar: { say, count, doors: Map(day -> button) }
+    doorOpenedAt: 0, // when a door last opened, so a double-tap keeps its reward message
+    adventSig: '', // what the title's button showed, to spot the day changing
     leaderboardBack: 'title',
     board: null, // id of the leaderboard tab last shown
     boardCache: new Map(), // board id -> { data, at }
@@ -822,6 +911,14 @@ export function createScreens(root, deps = {}) {
       deps.onSettingsChanged?.();
     } catch (err) {
       console.error('[screens] onSettingsChanged failed', err);
+    }
+  };
+  // Today, for the calendar. main.js decides: the dev server can pretend.
+  const today = () => {
+    try {
+      return deps.getNow?.() ?? new Date();
+    } catch {
+      return new Date();
     }
   };
   const play = (name) => {
@@ -1067,6 +1164,7 @@ export function createScreens(root, deps = {}) {
     const wasHidden = state.current === null;
     state.current = name;
     state.shop = null;
+    state.advent = null;
     state.lb = null;
     state.privacy = null;
     state.confirmDelete = false;
@@ -1108,6 +1206,7 @@ export function createScreens(root, deps = {}) {
     const was = state.current;
     state.current = null;
     state.shop = null;
+    state.advent = null;
     state.lb = null;
     state.privacy = null;
     state.confirmReset = false;
@@ -1200,6 +1299,10 @@ export function createScreens(root, deps = {}) {
         play('click');
         leaveShop();
         break;
+      case 'advent':
+        play('click');
+        leaveAdvent();
+        break;
       case 'gallery':
         play('click');
         leaveGallery();
@@ -1242,6 +1345,10 @@ export function createScreens(root, deps = {}) {
   function leaveShop() {
     if (state.shopBack === 'results' && state.lastSummary) renderResults(state.lastSummary, true);
     else showTitle();
+  }
+  function leaveAdvent() {
+    showTitle();
+    focusEl(stage.querySelector('[data-key="advent"]'));
   }
   function leaveGallery() {
     const b = state.galleryBack;
@@ -1500,6 +1607,29 @@ export function createScreens(root, deps = {}) {
     );
   }
 
+  // December only. The dot means a door is waiting to be opened.
+  function adventButton() {
+    const ready = readyDoors(getSave(), today()).length > 0;
+    const b = button('Advent Calendar', {
+      icon: '🍫',
+      variant: 'choc',
+      key: 'advent',
+      aria: ready ? 'Advent Calendar, a door is ready to open' : null,
+      onClick: () => {
+        play('click');
+        showAdvent();
+      },
+    });
+    if (ready) b.appendChild(h('span', { class: 'scr-btn__dot', 'aria-hidden': 'true' }));
+    return b;
+  }
+
+  // What the title's calendar button depends on, in a word.
+  function adventSig() {
+    const now = today();
+    return isAdventTime(now) ? `open:${readyDoors(getSave(), now).length}` : 'closed';
+  }
+
   function buildTitle() {
     const save = getSave();
     const legend = isUnlocked(save, 'jumper');
@@ -1507,6 +1637,8 @@ export function createScreens(root, deps = {}) {
     const total = jokeTotal();
     const next = nextMilestone(save);
     const hasCloud = !!cloud();
+    const adventOn = isAdventTime(today());
+    state.adventSig = adventSig();
 
     const sparkles = h(
       'div',
@@ -1516,7 +1648,7 @@ export function createScreens(root, deps = {}) {
 
     const menu = h(
       'nav',
-      { class: `scr-menu${hasCloud ? ' scr-menu--cloud' : ''}`, 'aria-label': 'Main menu' },
+      { class: `scr-menu${hasCloud ? ' scr-menu--cloud' : ''}${adventOn ? ' scr-menu--advent' : ''}`, 'aria-label': 'Main menu' },
       // keys let refresh() put focus back after a cloud merge rebuilds the title
       button('Start Night', {
         icon: '🌙',
@@ -1538,6 +1670,7 @@ export function createScreens(root, deps = {}) {
           openShop('title');
         },
       }),
+      adventOn ? adventButton() : null,
       button('Joke Gallery', {
         icon: '📖',
         variant: 'gold',
@@ -2120,6 +2253,8 @@ export function createScreens(root, deps = {}) {
       crackers: num(src.crackers),
       presents: num(src.presents),
       coinsEarned: num(src.coinsEarned),
+      candyEarned: num(src.candyEarned),
+      newBaubles: Array.isArray(src.newBaubles) ? src.newBaubles.filter((b) => b && b.name) : [],
       newJokes: uniq(src.newJokes, (id) => JOKE_LIST.find((j) => j.id === id)).filter((j) => j.q || j.a),
       newUnlocks: uniq(src.newUnlocks, (id) => getMilestone(id)),
       surprises: src.surprises && typeof src.surprises === 'object' ? src.surprises : {},
@@ -2178,6 +2313,19 @@ export function createScreens(root, deps = {}) {
 
     if (record) {
       sections.push(h('div', { class: 'scr-record' }, h('span', { 'aria-hidden': 'true' }, '⭐'), ' Your best night yet! ', h('span', { 'aria-hidden': 'true' }, '⭐')));
+    }
+
+    // Candy and baubles from tonight
+    if (s.candyEarned > 0 || s.newBaubles.length) {
+      const baubles = s.newBaubles.length;
+      sections.push(
+        h(
+          'div',
+          { class: 'scr-treats' },
+          s.candyEarned > 0 ? h('span', null, h('span', { 'aria-hidden': 'true' }, '🍬 '), `+${fmt(s.candyEarned)} candy (you have ${fmt(save.candy)})`) : null,
+          baubles ? h('span', null, h('span', { 'aria-hidden': 'true' }, '🎄 '), baubles === 1 ? `New bauble: ${s.newBaubles[0].name}` : `${baubles} new baubles for your tree`) : null
+        )
+      );
     }
 
     // New unlocks
@@ -2410,6 +2558,7 @@ export function createScreens(root, deps = {}) {
   function openShop(back) {
     state.shopBack = SHOP_BACKS.has(back) ? back : 'title';
     if (state.shopBack === 'results' && !state.lastSummary) state.shopBack = 'title';
+    state.treePick = { slot: null, bauble: null };
     open('shop', buildShop);
     renderShopPanel();
   }
@@ -2417,7 +2566,9 @@ export function createScreens(root, deps = {}) {
   function buildShop() {
     const save = getSave();
     const purseNum = h('b', { class: 'scr-purse__num' }, fmt(save.coins));
-    const purse = h('div', { class: 'scr-purse', title: 'Your coins' }, h('span', { class: 'scr-coin scr-coin--big' }), purseNum);
+    const purseIcon = h('span', { class: 'scr-coin scr-coin--big', 'aria-hidden': 'true' });
+    const purseWord = h('span', { class: 'scr-sr' }, ' coins');
+    const purse = h('div', { class: 'scr-purse', title: 'Your coins' }, purseIcon, purseNum, purseWord);
 
     const tabs = h('div', { class: 'scr-tabs', role: 'tablist', 'aria-label': 'Workshop sections' });
     for (const t of SHOP_TABS) {
@@ -2438,6 +2589,7 @@ export function createScreens(root, deps = {}) {
         if (state.shopTab === t.id) return;
         play('click');
         state.shopTab = t.id;
+        state.treePick = { slot: null, bauble: null };
         renderShopPanel();
         scrollBodyTop(panel);
       });
@@ -2449,6 +2601,7 @@ export function createScreens(root, deps = {}) {
       const i = SHOP_TABS.findIndex((t) => t.id === state.shopTab);
       const n = (i + (e.key === 'ArrowRight' ? 1 : -1) + SHOP_TABS.length) % SHOP_TABS.length;
       state.shopTab = SHOP_TABS[n].id;
+      state.treePick = { slot: null, bauble: null };
       play('click');
       renderShopPanel();
       scrollBodyTop(panel);
@@ -2506,7 +2659,7 @@ export function createScreens(root, deps = {}) {
       panel,
       foot
     );
-    state.shop = { panel, purseNum, purse, tabs };
+    state.shop = { panel, purseNum, purseIcon, purseWord, purse, tabs };
     return book;
   }
 
@@ -2514,13 +2667,19 @@ export function createScreens(root, deps = {}) {
     const refs = state.shop;
     if (!refs) return;
     const save = getSave();
-    refs.purseNum.textContent = fmt(save.coins);
+    // the Pets tab spends candy, so the purse shows candy there
+    const candy = state.shopTab === 'pets';
+    refs.purseNum.textContent = fmt(candy ? save.candy : save.coins);
+    refs.purseIcon.className = candy ? 'scr-sweet scr-sweet--big' : 'scr-coin scr-coin--big';
+    refs.purseWord.textContent = candy ? ' candy' : ' coins';
+    refs.purse.title = candy ? 'Your candy' : 'Your coins';
     for (const b of refs.tabs.querySelectorAll('.scr-tab')) {
       b.setAttribute('aria-selected', b.dataset.tab === state.shopTab ? 'true' : 'false');
       b.tabIndex = b.dataset.tab === state.shopTab ? 0 : -1;
     }
     let content;
     if (state.shopTab === 'rewards') content = rewardsPanel(save);
+    else if (state.shopTab === 'pets') content = petsPanel(save);
     else if (state.shopTab === 'wardrobe') content = wardrobePanel(save);
     else content = upgradesPanel(save);
     refs.panel.replaceChildren(content);
@@ -2713,6 +2872,177 @@ export function createScreens(root, deps = {}) {
     return h('div', { class: 'scr-rewards' }, headline, track, list);
   }
 
+  function petsPanel(save) {
+    const cheapest = PETS.reduce((m, p) => {
+      const c = petCost(save, p);
+      return c === null ? m : Math.min(m, c);
+    }, Infinity);
+    return h(
+      'div',
+      null,
+      h(
+        'p',
+        { class: 'scr-hintline' },
+        Number.isFinite(cheapest) && save.candy < cheapest ? 'Crack candy canes at night to earn candy for your pets. ' : null,
+        'One pet can come along each night, as well as your Snow Puppy.'
+      ),
+      h(
+        'div',
+        { class: 'scr-upgrades scr-pets' },
+        PETS.map((p, i) => petCard(p, save, i))
+      ),
+      h('p', { class: 'scr-petnote' }, h('span', { 'aria-hidden': 'true' }, '🐾 '), PET_NOTE)
+    );
+  }
+
+  // Candy for this pet's next step: its price, then its feeds. Null when there's
+  // nothing to pay for (level 5, or a Snow Puppy nobody has met yet).
+  function petCost(save, p) {
+    return petLevel(save, p.id) > 0 ? feedCost(save, p.id) : p.price;
+  }
+
+  // What feeding leads to, for the card. The Penguin Chick's bonus only goes up
+  // every other level, so this looks ahead to the next level that changes it.
+  function petNextLine(p, lvl) {
+    const now = perkText(p.id, lvl);
+    let at = lvl + 1;
+    while (at < MAX_PET_LEVEL && perkText(p.id, at) === now) at++;
+    const text = perkText(p.id, at);
+    return [h('b', null, at === lvl + 1 ? 'Next: ' : `Level ${at}: `), at === MAX_PET_LEVEL ? `${text}, plus a little gold bow` : text];
+  }
+
+  function petCard(p, save, i) {
+    const lvl = petLevel(save, p.id);
+    const owned = lvl > 0;
+    const cost = petCost(save, p);
+    const maxed = owned && cost === null;
+    const poor = cost !== null && save.candy < cost;
+    const action = owned ? 'Feed' : 'Buy';
+
+    const pips = h(
+      'div',
+      { class: 'scr-lvl', role: 'img', 'aria-label': owned ? `Friendship level ${lvl} of ${MAX_PET_LEVEL}` : 'Not one of your pets yet' },
+      Array.from({ length: MAX_PET_LEVEL }, (_, k) => h('i', { class: k < lvl ? 'is-on' : '' })),
+      h('span', { class: 'scr-lvl__text', 'aria-hidden': 'true' }, !owned ? 'New' : maxed ? 'MAX' : `Lv ${lvl}/${MAX_PET_LEVEL}`)
+    );
+
+    const card = h(
+      'article',
+      {
+        class: `scr-upg scr-pet scr-tint--${CARD_TINTS[i % CARD_TINTS.length]}${maxed ? ' is-max' : ''}${poor ? ' is-poor' : ''}`,
+        'data-id': p.id,
+        tabindex: '-1',
+        style: { '--tilt': `${i % 2 ? 0.8 : -0.8}deg`, '--i': String(i) },
+      },
+      h('span', { class: 'scr-upg__tape', 'aria-hidden': 'true' }),
+      h('div', { class: 'scr-upg__orn', 'aria-hidden': 'true' }, h('span', null, p.icon)),
+      h('h3', { class: 'scr-upg__name' }, p.name),
+      h('p', { class: 'scr-upg__blurb' }, p.blurb),
+      pips,
+      owned ? h('p', { class: 'scr-upg__now' }, '✔ ', perkText(p.id, lvl)) : null,
+      maxed
+        ? h('p', { class: 'scr-upg__next' }, 'It wears a little gold bow.')
+        : h('p', { class: 'scr-upg__next' }, owned ? petNextLine(p, lvl) : [h('b', null, 'Its trick: '), perkText(p.id, 1)])
+    );
+
+    if (maxed) {
+      card.appendChild(h('div', { class: 'scr-upg__stamp' }, 'BEST FRIENDS!'));
+    } else if (cost !== null) {
+      const buy = h(
+        'button',
+        {
+          type: 'button',
+          class: `scr-buy${poor ? ' is-poor' : ''}`,
+          'data-key': `pet-${p.id}`,
+          'aria-disabled': poor ? 'true' : 'false',
+          'aria-label': poor ? `${p.name}: costs ${cost} candy, you need ${cost - save.candy} more` : `${action} ${p.name} for ${cost} candy`,
+        },
+        h('span', { class: 'scr-buy__label' }, poor ? 'Need' : action),
+        sweet(),
+        h('b', null, fmt(cost)),
+        poor ? h('small', { class: 'scr-buy__more' }, `${fmt(cost - save.candy)} more`) : null
+      );
+      buy.addEventListener('click', () => onPetTreat(p, card));
+      card.appendChild(buy);
+    } else {
+      // the Snow Puppy can't be bought: it finds you
+      card.appendChild(h('p', { class: 'scr-pet__how' }, puppyFindText(save)));
+    }
+
+    if (owned && p.id === 'puppy') card.appendChild(h('p', { class: 'scr-pet__how' }, puppyComesText(save)));
+    if (owned && p.price !== null) card.appendChild(petGoButton(p, save));
+    return card;
+  }
+
+  // For a puppy that hasn't joined yet. The 25-present reward may already be
+  // won: it joins on the next night, unless its Wardrobe switch is off.
+  function puppyFindText(save) {
+    if (isActive(save, 'puppy')) return 'It joins you on your next night.';
+    if (isUnlocked(save, 'puppy')) return puppyComesText(save);
+    return `Find it in a present, or open ${fmt(getMilestone('puppy')?.count ?? 25)} presents.`;
+  }
+
+  function puppyComesText(save) {
+    if (isActive(save, 'puppy')) return 'It comes along every night.';
+    if (isUnlocked(save, 'puppy')) return 'Switch it on in the Wardrobe to bring it along.';
+    return `It comes along when it pops out of a present. Open ${fmt(getMilestone('puppy')?.count ?? 25)} presents and it comes every night.`;
+  }
+
+  // On or off, one pet at a time: choosing another swaps them.
+  function petGoButton(p, save) {
+    const going = activePetId(save) === p.id;
+    const go = h(
+      'button',
+      { type: 'button', class: 'scr-wtoggle scr-pet__go', 'aria-pressed': going ? 'true' : 'false', 'data-key': `go-${p.id}`, 'aria-label': `Bring ${p.name} along` },
+      h('b', null, 'Bring along'),
+      h('span', { class: 'scr-toggle__sw', 'aria-hidden': 'true' }, h('i'))
+    );
+    go.addEventListener('click', () => {
+      const sv = getSave();
+      const on = activePetId(sv) !== p.id;
+      setActivePet(sv, on ? p.id : null);
+      persist();
+      play(on ? PET_CRIES[p.id] : 'click');
+      rerenderPets(p.id);
+    });
+    return go;
+  }
+
+  // Redraws the Pets tab with focus still on the same control. Hands back the
+  // fresh card, for its little celebration.
+  function rerenderPets(id) {
+    const refs = state.shop;
+    if (!refs) return null;
+    keepFocus(refs.panel, renderShopPanel, () => refs.panel.querySelector(`[data-id="${id}"]`));
+    return Array.from(refs.panel.querySelectorAll('.scr-pet')).find((c) => c.dataset.id === id) || null;
+  }
+
+  // The card's one big button: buy a new pet, or feed one you have.
+  function onPetTreat(p, card) {
+    const now = performance.now();
+    if (state.petTap.id === p.id && now - state.petTap.at < 350) return;
+    state.petTap = { id: p.id, at: now };
+    const save = getSave();
+    const owned = petLevel(save, p.id) > 0;
+    if (owned ? feedPet(save, p.id) : buyPet(save, p.id)) {
+      // a first pet of your own comes along without being asked
+      if (!owned && !activePetId(save)) setActivePet(save, p.id);
+      persist();
+      play('buy');
+      later(() => play(PET_CRIES[p.id]), 320);
+      const fresh = rerenderPets(p.id);
+      if (fresh) {
+        restartAnim(fresh, 'is-bought');
+        burst(fresh, 14);
+      }
+      if (state.shop) restartAnim(state.shop.purse, 'is-bump');
+    } else {
+      play('error');
+      restartAnim(card, 'is-shake');
+      if (state.shop) restartAnim(state.shop.purse, 'is-shake');
+    }
+  }
+
   function wardrobePanel(save) {
     const cosmetics = MILESTONES.filter((m) => m.cosmetic);
     const preview = h('div', { class: 'scr-wardrobe__preview' });
@@ -2762,20 +3092,379 @@ export function createScreens(root, deps = {}) {
       return row;
     });
 
+    const tree = treeSection(save);
+    const jump = button(`Your Christmas Tree: ${foundCount(save)} / ${BAUBLES.length} found`, {
+      icon: '🎄',
+      variant: 'snow',
+      size: 'small',
+      cls: 'scr-xtree__jump',
+      onClick: () => {
+        play('click');
+        tree.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+        focusEl(tree);
+      },
+    });
+
     return h(
       'div',
-      { class: 'scr-wardrobe' },
-      preview,
+      null,
+      jump,
       h(
         'div',
-        { class: 'scr-wardrobe__list' },
-        anyUnlocked
-          ? h('p', { class: 'scr-hintline' }, 'Tap a reward to switch it on or off.')
-          : h('p', { class: 'scr-hintline' }, `Open presents to unlock cosy outfits for Pip! The first one arrives at ${MILESTONES[0] ? MILESTONES[0].count : 10} presents.`),
-        rows
-      )
+        { class: 'scr-wardrobe' },
+        preview,
+        h(
+          'div',
+          { class: 'scr-wardrobe__list' },
+          anyUnlocked
+            ? h('p', { class: 'scr-hintline' }, 'Tap a reward to switch it on or off.')
+            : h('p', { class: 'scr-hintline' }, `Open presents to unlock cosy outfits for Pip! The first one arrives at ${MILESTONES[0] ? MILESTONES[0].count : 10} presents.`),
+          rows
+        )
+      ),
+      tree
     );
   }
+
+  // ---- Your Christmas Tree: 12 spots and every bauble design ----
+
+  // Tap a spot then a bauble, or a bauble then a spot, and a bauble on the tree
+  // comes off with a tap. Everything is a real button, so a mouse, a finger and
+  // the keyboard all do the same thing; `say` tells screen readers each step.
+  function treeSection(save) {
+    const titleId = 'scr-xtree-title';
+    const counter = h('span', { class: 'scr-chipcount' });
+    const art = h('div', { html: TREE_SVG }).firstElementChild;
+    const say = h('p', { class: 'scr-xtree__say', role: 'status' });
+    const spots = h('div', { class: 'scr-xtree__tree', role: 'group', 'aria-label': 'Spots on your tree' });
+    const shelf = h('div', { class: 'scr-xtree__shelf', role: 'group', 'aria-label': 'Your baubles' });
+    const side = h('div', { class: 'scr-xtree__side' }, say, shelf);
+    const box = h('div', { class: 'scr-xtree__play' }, spots, side);
+    const section = h(
+      'section',
+      { class: 'scr-section scr-xtree', 'aria-labelledby': titleId, tabindex: '-1' },
+      h('h3', { class: 'scr-section__title', id: titleId }, h('span', { 'aria-hidden': 'true' }, '🎄 '), 'Your Christmas Tree ', counter),
+      h('p', { class: 'scr-xtree__blurb' }, 'Shake trees at night to find baubles. Your tree stands in the village square, wearing everything you hang here.'),
+      box
+    );
+
+    const render = () => {
+      const sv = getSave();
+      const pick = state.treePick;
+      // a cloud merge or a reset can take the picked bauble away
+      if (pick.bauble && !sv.foundBaubles.includes(pick.bauble)) pick.bauble = null;
+      counter.textContent = `${foundCount(sv)} / ${BAUBLES.length} found`;
+      spots.replaceChildren(art, ...treeSpotButtons(sv));
+      shelf.replaceChildren(...BAUBLES.map((b) => shelfTile(b, sv)));
+    };
+    const redraw = () => keepFocus(box, render, () => spots.querySelector('.scr-xtree__spot'));
+    const tell = (text) => {
+      say.textContent = text;
+    };
+    // On a phone the tree and the shelf don't fit on one screen, so each tap
+    // brings up the half that comes next.
+    const reveal = (node) => node.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+
+    function treeSpotButtons(sv) {
+      const places = treeSpotPlaces();
+      const pick = state.treePick;
+      const picked = pick.bauble && getBauble(pick.bauble);
+      return treeSpots(sv).map(({ slot, bauble }, i) => {
+        const n = i + 1;
+        const chosen = pick.slot === slot;
+        let label = bauble ? `Spot ${n}, ${bauble.name}. Take it off` : `Spot ${n}, empty. Choose this spot`;
+        if (picked) label = `Hang ${picked.name} on spot ${n}${bauble ? `, in place of ${bauble.name}` : ''}`;
+        const b = h(
+          'button',
+          {
+            type: 'button',
+            class: `scr-xtree__spot${bauble ? ' has-bauble' : ''}`,
+            style: places[i],
+            'data-key': `spot-${slot}`,
+            'aria-label': label,
+            'aria-pressed': chosen ? 'true' : 'false',
+            title: bauble ? bauble.name : null,
+          },
+          bauble ? baubleEl(bauble) : null
+        );
+        b.addEventListener('click', () => tapSpot(slot));
+        return b;
+      });
+    }
+
+    function shelfTile(b, sv) {
+      if (!sv.foundBaubles.includes(b.id)) {
+        // the counter says how many are left; a "?" has nothing to press or read
+        return h('span', { class: `scr-xtree__tile is-unknown scr-xtree__tile--${b.rarity}`, 'aria-hidden': 'true' }, '?');
+      }
+      const pick = state.treePick;
+      const hung = slotOf(sv, b.id);
+      const tile = h(
+        'button',
+        {
+          type: 'button',
+          class: `scr-xtree__tile scr-xtree__tile--${b.rarity}${hung ? ' is-hung' : ''}`,
+          'data-key': `bauble-${b.id}`,
+          'aria-pressed': pick.bauble === b.id ? 'true' : 'false',
+          'aria-label': `${b.name}, ${RARITY_LABEL[b.rarity].toLowerCase()}${hung ? ', on your tree' : ''}`,
+          title: b.name,
+        },
+        baubleEl(b),
+        hung ? h('span', { class: 'scr-xtree__tick', 'aria-hidden': 'true' }, '✓') : null
+      );
+      tile.addEventListener('click', () => tapBauble(b.id));
+      return tile;
+    }
+
+    function hang(slot, id) {
+      const sv = getSave();
+      const b = getBauble(id);
+      state.treePick = { slot: null, bauble: null };
+      if (placeBauble(sv, slot, id)) {
+        persist();
+        settingsChanged(); // the village tree behind the menu wears it at once
+        play('pop');
+        tell(`${b.name} is on your tree!`);
+      } else {
+        play('click');
+        tell(`${b.name} is already there.`);
+      }
+      redraw();
+      reveal(spots);
+    }
+
+    function tapSpot(slot) {
+      const sv = getSave();
+      const pick = state.treePick;
+      const on = treeSpots(sv).find((s) => s.slot === slot)?.bauble || null;
+      const n = TREE_SLOTS.indexOf(slot) + 1;
+      if (pick.bauble) {
+        hang(slot, pick.bauble);
+        return;
+      }
+      if (on) {
+        removeBauble(sv, slot);
+        persist();
+        settingsChanged();
+        play('click');
+        tell(`${on.name} is back on the shelf.`);
+      } else if (pick.slot === slot) {
+        pick.slot = null;
+        play('click');
+        tell('Pick a spot on the tree, then a bauble.');
+      } else {
+        pick.slot = slot;
+        play('click');
+        tell(sv.foundBaubles.length ? `Spot ${n}. Now pick a bauble for it.` : `Spot ${n}. Find a bauble first!`);
+      }
+      redraw();
+      if (state.treePick.slot) reveal(side);
+    }
+
+    function tapBauble(id) {
+      const pick = state.treePick;
+      const b = getBauble(id);
+      if (pick.slot) {
+        hang(pick.slot, id);
+        return;
+      }
+      pick.bauble = pick.bauble === id ? null : id;
+      play('click');
+      tell(pick.bauble ? `${b.name}. Now pick a spot on the tree.` : 'Pick a spot on the tree, then a bauble.');
+      redraw();
+      if (pick.bauble) reveal(spots);
+    }
+
+    render();
+    tell(treeHelloText(save));
+    return section;
+  }
+
+  function treeHelloText(save) {
+    const found = foundCount(save);
+    if (!found) return 'No baubles yet. Shake pine trees and lollipop trees to find some!';
+    // only door 24 gives the last one, so say where it hides (in December: the
+    // rest of the year there's no sign of the calendar)
+    if (found === BAUBLES.length - 1 && !save.foundBaubles.includes(GOLDEN_STAR_ID)) {
+      return isAdventTime(today()) ? 'One left! The Golden Star hides behind door 24 of the Advent Calendar.' : 'One left! The Golden Star is waiting for Christmas.';
+    }
+    return 'Pick a spot on the tree, then a bauble.';
+  }
+
+  // ---------------------------------------------------------------------------
+  // ADVENT CALENDAR (December only)
+  // ---------------------------------------------------------------------------
+
+  function showAdvent() {
+    if (!isAdventTime(today())) {
+      showTitle();
+      return;
+    }
+    open('advent', buildAdvent);
+    // today's door may start below the fold on a small phone
+    stage.querySelector('.scr-door[data-autofocus]')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function buildAdvent() {
+    const save = getSave();
+    const now = today();
+    const say = h('div', { class: 'scr-advent__say', role: 'status' });
+    const count = h('b', { class: 'scr-purse__num' });
+    const doors = new Map();
+    const first = readyDoors(save, now)[0] ?? null;
+
+    const grid = h(
+      'div',
+      { class: 'scr-advent__doors', role: 'group', 'aria-label': 'Calendar doors' },
+      DOOR_LAYOUT.map((day) => {
+        const door = h('button', { type: 'button', 'data-key': `door-${day}`, 'data-autofocus': day === first ? true : null, 'data-tone': String(day % 4) });
+        door.addEventListener('click', () => tapDoor(day, door));
+        doors.set(day, door);
+        return door;
+      })
+    );
+
+    state.advent = { say, count, doors };
+    syncAdvent();
+    sayAdventHello();
+
+    const foot = [
+      button('Back', {
+        icon: '↩',
+        variant: 'snow',
+        autofocus: first === null,
+        onClick: () => {
+          play('click');
+          leaveAdvent();
+        },
+      }),
+    ];
+
+    return page(
+      {
+        cls: 'scr-advent',
+        title: 'Advent Calendar',
+        icon: '🍫',
+        headExtra: say,
+        corner: h('div', { class: 'scr-purse', title: 'Doors opened' }, h('span', { 'aria-hidden': 'true' }, '🚪'), count, h('span', { class: 'scr-sr' }, ' doors opened')),
+      },
+      grid,
+      foot
+    );
+  }
+
+  // Brings every door and the counter up to date, leaving what the speech bubble
+  // says alone. A door that just opened passes `fresh`, and swings open.
+  function syncAdvent(fresh = null) {
+    const refs = state.advent;
+    if (!refs) return;
+    const now = today();
+    const save = getSave();
+    refs.count.textContent = `${openedDoors(save, now).length} / ${ADVENT_TUNING.doors}`;
+    for (const [day, door] of refs.doors) fillDoor(door, day, doorState(save, day, now), day === fresh);
+  }
+
+  function fillDoor(door, day, st, fresh) {
+    const choc = getChocolate(day);
+    const opened = st === 'opened';
+    door.className = `scr-door is-${st}${day === ADVENT_TUNING.doors ? ' is-last' : ''}`;
+    let label = `Door ${day}, ready to open`;
+    if (opened) label = `Door ${day}, ${choc.name}`;
+    else if (st === 'locked') label = `Door ${day}, opens on ${day} December`;
+    door.setAttribute('aria-label', label);
+    door.replaceChildren();
+    addKids(door, [
+      opened ? h('span', { class: 'scr-door__choc', html: chocolateHTML(choc) }) : null,
+      h('span', { class: 'scr-door__num' }, String(day)),
+      fresh ? h('span', { class: 'scr-door__flap', 'aria-hidden': 'true', 'data-tone': door.dataset.tone }, String(day)) : null,
+    ]);
+  }
+
+  // The speech bubble over the doors: `art` is a chocolate's drawing or an icon.
+  function sayAdvent(art, title, lines = []) {
+    state.advent?.say.replaceChildren(
+      typeof art === 'string' ? h('span', { class: 'scr-advent__art', 'aria-hidden': 'true' }, art) : art,
+      h('p', { class: 'scr-advent__words' }, title ? h('b', null, title) : null, lines.map((l) => h('span', null, l)))
+    );
+  }
+
+  function chocolateArt(choc) {
+    return h('span', { class: 'scr-advent__art', html: chocolateHTML(choc) });
+  }
+
+  function sayAdventHello() {
+    const now = today();
+    const save = getSave();
+    const ready = readyDoors(save, now).length;
+    if (openedDoors(save, now).length === ADVENT_TUNING.doors) sayAdvent('🎄', 'Every door is open!', ['Happy Christmas, Pip!']);
+    else if (ready) sayAdvent('🐧', ready === 1 ? 'A door is ready!' : `${ready} doors are ready!`, ['Tap a shiny door to see what is inside.']);
+    else sayAdvent('🐧', 'All done for today!', ['Come back tomorrow for the next door.']);
+  }
+
+  // Every door is a button: a locked one wiggles and says when, a ready one
+  // opens, and an opened one shows its chocolate again.
+  function tapDoor(day, door) {
+    const st = doorState(getSave(), day, today());
+    if (st === 'locked') {
+      play('click');
+      restartAnim(door, 'is-wiggle');
+      sayAdvent('🔒', lockedDoorText(day));
+      return;
+    }
+    const choc = getChocolate(day);
+    if (st === 'opened') {
+      if (performance.now() - state.doorOpenedAt < 800) return;
+      play('click');
+      restartAnim(door, 'is-boing');
+      sayAdvent(chocolateArt(choc), choc.name, choc.note ? [choc.note] : []);
+      return;
+    }
+    // main.js pays, through the same paths as a night's coins and candy
+    let got = null;
+    try {
+      got = deps.onOpenDoor?.(day) ?? null;
+    } catch (err) {
+      console.error('[screens] onOpenDoor failed', err);
+    }
+    if (!got) {
+      play('error');
+      syncAdvent();
+      return;
+    }
+    state.doorOpenedAt = performance.now();
+    play('pop');
+    syncAdvent(day);
+    burst(door, 14);
+    sayAdvent(chocolateArt(choc), choc.name, adventRewardLines(got));
+    if (got.bauble) {
+      play('unlock');
+      const party = confettiLayer();
+      if (party) stage.querySelector('.scr-advent')?.appendChild(party);
+    }
+  }
+
+  function adventRewardLines({ chocolate, coins, candy, bauble, baubleIsNew }) {
+    const paid = [`+${fmt(coins)} coins`, candy ? `+${fmt(candy)} candy` : null].filter(Boolean).join(' and ');
+    const lines = [chocolate.note, paid];
+    if (bauble) {
+      const name = getBauble(bauble)?.name || 'A new bauble';
+      lines.push(baubleIsNew ? `And the ${name} bauble! Hang it on your tree in the Wardrobe.` : `And another ${name} bauble!`);
+    }
+    return lines.filter(Boolean);
+  }
+
+  // The date moves on behind a phone's back: a game left open overnight comes
+  // back to a new day. Nothing else redraws these two screens.
+  function onDayCheck() {
+    if (document.hidden) return;
+    if (state.current === 'advent') {
+      if (isAdventTime(today())) syncAdvent();
+      else showTitle();
+    } else if (state.current === 'title' && state.adventSig !== adventSig()) {
+      rebuildTitle();
+    }
+  }
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onDayCheck);
 
   // ---------------------------------------------------------------------------
   // GALLERY
@@ -5207,7 +5896,7 @@ export function createScreens(root, deps = {}) {
           '🎉',
           'Crackers',
           h('div', { class: 'scr-note__art', 'aria-hidden': 'true', html: crackerHTML() }),
-          h('p', null, 'Waddle up to a cracker and press ', h('kbd', { class: 'scr-key' }, 'E'), '. BANG! Out pops a joke for your Gallery, plus coins:'),
+          h('p', null, 'Waddle up to a cracker and press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap. BANG! Out pops a joke for your Gallery, plus coins:'),
           h(
             'div',
             { class: 'scr-rarities' },
@@ -5246,7 +5935,22 @@ export function createScreens(root, deps = {}) {
           '🏆',
           'Rewards',
           h('p', null, 'Every present you ever open counts towards rewards: outfits, a snow puppy, a candy island and a disco sky!')
-        )
+        ),
+        note(
+          'scr-tint--sky',
+          '🍬',
+          'Candy and pets',
+          h('p', null, 'Press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap at a little candy cane in the snow, or belly-slide through it. Spend your candy in the Workshop on new pets, and feed them to make them better friends.')
+        ),
+        note(
+          'scr-tint--butter',
+          '🎄',
+          'Baubles',
+          h('p', null, 'Press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap by a pine tree or a lollipop tree to shake it, or slide into it. Sometimes a bauble falls out! Hang your baubles on your tree in the Wardrobe.')
+        ),
+        isAdventTime(today())
+          ? note('scr-tint--lilac', '🍫', 'Advent Calendar', h('p', null, 'Open a new door on the title screen every day in December. Missed one? It stays ready until the 31st.'))
+          : null
       )
     );
 
@@ -5292,7 +5996,10 @@ export function createScreens(root, deps = {}) {
         if (state.lastSummary) renderResults(state.lastSummary, true);
         break;
       case 'shop':
-        renderShopPanel();
+        if (state.shop) keepFocus(state.shop.panel, renderShopPanel, () => state.shop.tabs.querySelector('[aria-selected="true"]'));
+        break;
+      case 'advent':
+        syncAdvent();
         break;
       case 'gallery':
         openGallery(state.galleryBack, { peek: state.galleryPeek });
@@ -5347,7 +6054,10 @@ export function createScreens(root, deps = {}) {
     for (const id of authTimers) clearTimeout(id);
     authTimers.clear();
     if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeyDown, true);
-    if (typeof document !== 'undefined') document.removeEventListener('keydown', onMenuKeyGuard);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('keydown', onMenuKeyGuard);
+      document.removeEventListener('visibilitychange', onDayCheck);
+    }
     el.remove();
   }
 
@@ -5355,6 +6065,7 @@ export function createScreens(root, deps = {}) {
     showTitle,
     showResults,
     showShop,
+    showAdvent,
     showGallery,
     showPause,
     showHelp,

@@ -1,7 +1,8 @@
-// Companions and surprise actors: the snow puppy, jack-in-the-box, reindeer
-// ride, snowball storm, coal buddy, disco tree, runaway gremlin and Santa's
-// flyover. Pure presentation: coins and timers live in surprises.js, which
-// hears about outcomes through the callbacks passed in here.
+// Companions and surprise actors: the snow puppy, the pets you can bring along
+// (Frost Kitten, Baby Reindeer, Penguin Chick), jack-in-the-box, reindeer ride,
+// snowball storm, coal buddy, disco tree, runaway gremlin and Santa's flyover.
+// Pure presentation: coins and timers live in surprises.js and treats.js, which
+// hear about outcomes through the callbacks passed in here.
 //
 // Everything is built from shared primitive geometries and cached toon
 // materials, then bake() merges the static parts of each model per animated
@@ -11,8 +12,11 @@
 
 import * as THREE from 'three';
 import { toon, addOutline, PALETTE } from './materials.js';
+import { petLevel, MAX_PET_LEVEL } from '../game/pets.js';
+import { prefersCalm } from '../core/motion.js';
 
 const TAU = Math.PI * 2;
+const SNIFF_RANGE = 12; // metres, before the puppy's friendship level
 const HAS_DOM = typeof document !== 'undefined' && typeof document.createElement === 'function';
 const FONT = "'Fredoka', 'Comic Sans MS', system-ui, sans-serif";
 const INK = '#2a1b3d';
@@ -41,6 +45,15 @@ const COL = {
   santaRed: 0xd62839,
   skin: 0xffd6b8,
   cloud: 0xeef2ff,
+  kitten: 0xe4f2ff,
+  kittenShade: 0xa7d0f0,
+  frost: 0x7fd4f5,
+  fawn: 0xc99468,
+  fawnDark: 0x9c6b45,
+  chick: 0xb9c4d6,
+  chickDark: 0x7a879e,
+  beak: 0xff9f2e,
+  mint: 0x6fdcb8,
 };
 
 // ------------------------------------------------------------------ maths
@@ -569,8 +582,8 @@ function bake(parts) {
   model.traverse((o) => {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || keep.has(o) || !o.visible || holdsKept(o)) return;
     const g = o.geometry;
+    // (a cylinder or cone has several groups, but with one material they draw as one)
     if (!g || !g.attributes.position || g.morphAttributes.position || Array.isArray(o.material)) return;
-    if (g.groups && g.groups.length > 1) return;
     // only pivots the build function returned ever move, so everything in
     // between is static relative to the anchor
     const anchor = anchorOf(o);
@@ -824,7 +837,31 @@ function createParticleLayer(capacity, texture, additive) {
 // =================================================================== models
 // Every model is built facing +Z with its base at y = 0.
 
-function buildPuppy() {
+// The little gold bow a pet earns at friendship level 5.
+function addGoldBow(parent, x, y, z, s) {
+  const gold = mGold();
+  for (const side of [-1, 1]) {
+    const loop = part(parent, gSphere(), gold, x + side * s * 0.8, y, z, s * 0.85, s * 0.55, s * 0.4);
+    loop.rotation.z = side * 0.35;
+    const tail = part(parent, gSphereLo(), gold, x + side * s * 0.4, y - s * 0.75, z, s * 0.18, s * 0.55, s * 0.14);
+    tail.rotation.z = side * 0.45;
+  }
+  part(parent, gSphere(), gold, x, y, z + s * 0.12, s * 0.34);
+}
+
+// Hidden until the pet says hello or something nice happens.
+function petBubble(group, word, y) {
+  const b = bubbleMaterial('pet' + word, [word], 256, 150, 70);
+  const bubble = new THREE.Sprite(b.mat);
+  bubble.center.set(b.tipU, b.tipV);
+  bubble.position.set(0.12, y, 0);
+  bubble.renderOrder = 25;
+  bubble.visible = false;
+  group.add(bubble);
+  return bubble;
+}
+
+function buildPuppy({ bow = false } = {}) {
   const group = new THREE.Group();
   group.name = 'snowPuppy';
   const body = pivot(group);
@@ -880,16 +917,215 @@ function buildPuppy() {
   part(tail, gSphere(), fur, 0, 0.08, -0.03, 0.065, 0.11, 0.065);
   part(tail, gSphere(), fur, 0, 0.18, -0.04, 0.07);
 
-  const woof = bubbleMaterial('woof', ['Woof!'], 256, 150, 70);
-  const bubble = new THREE.Sprite(woof.mat);
-  bubble.center.set(woof.tipU, woof.tipV);
-  bubble.position.set(0.12, 0.95, 0);
-  bubble.renderOrder = 25;
-  bubble.visible = false;
-  group.add(bubble);
+  if (bow) addGoldBow(head, 0, 0.38, 0.02, 0.085);
+  const bubble = petBubble(group, 'Woof!', 0.95);
 
   return bake({ group, body, head, ears, tail, legs, eyes, tongue, bubble });
 }
+
+function buildKitten({ bow = false } = {}) {
+  const group = new THREE.Group();
+  group.name = 'frostKitten';
+  const body = pivot(group);
+  const fur = toon(COL.kitten);
+  const shade = toon(COL.kittenShade);
+  const pink = toon(COL.cheek);
+  const frost = toon(COL.frost, { emissive: 0x2a8fc8, emissiveIntensity: 0.5 });
+
+  const torso = part(body, gSphere(), fur, 0, 0.3, -0.04, 0.2, 0.19, 0.28, true);
+  addOutline(torso, 0.07);
+  part(body, gSphere(), shade, 0, 0.46, -0.11, 0.11, 0.05, 0.15); // frosty patch
+
+  const legs = [];
+  for (const [x, z] of [
+    [-0.11, 0.13],
+    [0.11, 0.13],
+    [-0.12, -0.2],
+    [0.12, -0.2],
+  ]) {
+    const leg = pivot(body, x, 0.18, z);
+    part(leg, gSphere(), fur, 0, -0.09, 0.01, 0.062, 0.1, 0.072);
+    legs.push(leg);
+  }
+
+  const collar = part(body, gTorus(), frost, 0, 0.43, 0.11, 0.125, 0.125, 0.125);
+  collar.rotation.x = Math.PI / 2 - 0.4;
+  part(body, gSphere(), frost, 0, 0.35, 0.23, 0.045);
+
+  const head = pivot(body, 0, 0.47, 0.17);
+  const skull = part(head, gSphere(), fur, 0, 0.12, 0.02, 0.235, 0.205, 0.205, true);
+  addOutline(skull, 0.07);
+  part(head, gSphere(), toon(0xffffff), 0, 0.055, 0.185, 0.105, 0.07, 0.07);
+  part(head, gSphere(), pink, 0, 0.09, 0.25, 0.03, 0.023, 0.018);
+  const eyes = cuteEyes(head, 0.095, 0.16, 0.175, 0.05);
+  for (const s of [-1, 1]) {
+    const ch = part(head, gSphere(), pink, s * 0.155, 0.07, 0.14, 0.045, 0.028, 0.018);
+    ch.rotation.y = s * 0.7;
+    for (const tilt of [0.12, -0.12]) {
+      const whisker = part(head, gCyl(), mInk(), s * 0.21, 0.065 + tilt * 0.15, 0.13, 0.0055, 0.15, 0.0055);
+      whisker.rotation.z = Math.PI / 2 + s * tilt;
+    }
+  }
+
+  const ears = [];
+  for (const s of [-1, 1]) {
+    const ear = pivot(head, s * 0.135, 0.27, 0);
+    ear.rotation.z = -s * 0.25;
+    part(ear, gCone(), fur, 0, 0.08, 0, 0.09, 0.2, 0.065);
+    part(ear, gCone(), pink, 0, 0.065, 0.025, 0.052, 0.13, 0.03);
+    ears.push(ear);
+  }
+
+  const tail = pivot(body, 0, 0.38, -0.29);
+  tail.rotation.x = -0.65;
+  part(tail, gSphere(), fur, 0, 0.11, 0, 0.05, 0.14, 0.05);
+  part(tail, gSphere(), shade, 0, 0.25, 0, 0.056, 0.075, 0.056);
+
+  if (bow) addGoldBow(head, 0, 0.335, 0.02, 0.062); // between the ears, like the puppy's: followers are mostly seen from behind
+  const bubble = petBubble(group, 'Mew!', 0.98);
+  return bake({ group, body, head, ears, tail, legs, eyes, bubble });
+}
+
+function buildFawn({ bow = false } = {}) {
+  const group = new THREE.Group();
+  group.name = 'babyReindeer';
+  const body = pivot(group);
+  const fur = toon(COL.fawn);
+  const light = toon(COL.furLight);
+  const antler = toon(COL.antler);
+  const white = toon(0xffffff);
+
+  const torso = part(body, gSphere(), fur, 0, 0.46, -0.02, 0.18, 0.17, 0.3, true);
+  addOutline(torso, 0.07);
+  part(body, gSphere(), light, 0, 0.4, 0.02, 0.135, 0.12, 0.24);
+  for (const [x, y, z] of [
+    [-0.13, 0.54, -0.14],
+    [0.13, 0.54, -0.18],
+    [-0.06, 0.62, -0.02],
+    [0.08, 0.61, 0.07],
+    [0.03, 0.62, -0.17],
+  ]) {
+    part(body, gSphereLo(), white, x, y, z, 0.03);
+  }
+
+  const legs = [];
+  for (const [x, z] of [
+    [-0.1, 0.17],
+    [0.1, 0.17],
+    [-0.11, -0.21],
+    [0.11, -0.21],
+  ]) {
+    const leg = pivot(body, x, 0.36, z);
+    part(leg, gCyl(), fur, 0, -0.17, 0, 0.038, 0.34, 0.038);
+    part(leg, gSphere(), toon(COL.hoof), 0, -0.33, 0.01, 0.05, 0.035, 0.06);
+    legs.push(leg);
+  }
+
+  const neck = part(body, gSphere(), fur, 0, 0.62, 0.22, 0.085, 0.17, 0.085);
+  neck.rotation.x = 0.45;
+  const collar = part(body, gTorus(), toon(COL.red), 0, 0.59, 0.21, 0.09, 0.09, 0.09);
+  collar.rotation.x = Math.PI / 2 - 0.45;
+  part(body, gSphere(), mGold(), 0, 0.5, 0.3, 0.036);
+
+  const head = pivot(body, 0, 0.79, 0.3);
+  const skull = part(head, gSphere(), fur, 0, 0.02, 0.03, 0.16, 0.145, 0.175, true);
+  addOutline(skull, 0.07);
+  part(head, gSphere(), light, 0, -0.025, 0.165, 0.1, 0.075, 0.09);
+  part(head, gSphere(), mNose(), 0, -0.005, 0.25, 0.04);
+  const eyes = cuteEyes(head, 0.08, 0.06, 0.14, 0.042);
+  for (const s of [-1, 1]) {
+    const ch = part(head, gSphere(), toon(COL.cheek), s * 0.12, -0.02, 0.11, 0.035, 0.022, 0.015);
+    ch.rotation.y = s * 0.7;
+  }
+
+  const ears = [];
+  for (const s of [-1, 1]) {
+    const ear = pivot(head, s * 0.14, 0.07, -0.03);
+    ear.rotation.z = -s * 1.05;
+    part(ear, gSphere(), fur, 0, 0.09, 0, 0.04, 0.1, 0.028);
+    part(ear, gSphereLo(), toon(COL.cheek), 0, 0.09, 0.016, 0.022, 0.065, 0.014);
+    ears.push(ear);
+    // little first antlers: one stem, one prong and a round tip
+    const a = pivot(head, s * 0.06, 0.13, -0.04);
+    a.rotation.set(-0.2, 0, -s * 0.3);
+    part(a, gCyl(), antler, 0, 0.07, 0, 0.017, 0.14, 0.017);
+    part(a, gSphereLo(), antler, 0, 0.145, 0, 0.024);
+    const prong = pivot(a, 0, 0.08, 0);
+    prong.rotation.z = -s * 0.9;
+    part(prong, gCyl(), antler, 0, 0.04, 0, 0.014, 0.08, 0.014);
+  }
+
+  const tail = pivot(body, 0, 0.56, -0.3);
+  part(tail, gSphere(), white, 0, 0.02, -0.03, 0.05, 0.065, 0.045);
+
+  if (bow) addGoldBow(head, 0, 0.185, -0.03, 0.07); // tied between the antlers
+  const bubble = petBubble(group, 'Meh-eh!', 1.25);
+  return bake({ group, body, head, ears, tail, legs, eyes, bubble });
+}
+
+function buildChick({ bow = false } = {}) {
+  const group = new THREE.Group();
+  group.name = 'penguinChick';
+  const body = pivot(group);
+  const fluff = toon(COL.chick);
+  const dark = toon(COL.chickDark);
+  const beak = toon(COL.beak);
+  const white = toon(0xffffff);
+
+  const torso = part(body, gSphere(), fluff, 0, 0.29, 0, 0.24, 0.26, 0.22, true);
+  addOutline(torso, 0.07);
+  part(body, gSphere(), white, 0, 0.26, 0.09, 0.17, 0.2, 0.15);
+
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const foot = pivot(body, s * 0.1, 0.05, 0.05);
+    part(foot, gSphere(), beak, 0, -0.015, 0.05, 0.075, 0.03, 0.11);
+    legs.push(foot);
+  }
+
+  const flippers = [];
+  for (const s of [-1, 1]) {
+    const flipper = pivot(body, s * 0.225, 0.37, 0.01);
+    flipper.rotation.z = s * 0.3;
+    part(flipper, gSphere(), dark, s * 0.02, -0.1, 0, 0.05, 0.125, 0.08);
+    flippers.push(flipper);
+  }
+
+  const scarf = part(body, gTorus(), toon(COL.mint), 0, 0.44, 0.01, 0.145, 0.145, 0.145);
+  scarf.rotation.x = Math.PI / 2;
+
+  const head = pivot(body, 0, 0.5, 0.03);
+  const skull = part(head, gSphere(), fluff, 0, 0.09, 0, 0.19, 0.175, 0.18, true);
+  addOutline(skull, 0.07);
+  part(head, gSphere(), dark, 0, 0.17, -0.02, 0.165, 0.09, 0.15); // darker cap
+  part(head, gSphere(), white, 0, 0.065, 0.105, 0.135, 0.105, 0.09);
+  const eyes = cuteEyes(head, 0.07, 0.095, 0.14, 0.04);
+  const bill = part(head, gCone(), beak, 0, 0.04, 0.215, 0.05, 0.1, 0.05);
+  bill.rotation.x = Math.PI / 2;
+  for (const s of [-1, 1]) {
+    const ch = part(head, gSphere(), toon(COL.cheek), s * 0.115, 0.035, 0.115, 0.032, 0.02, 0.014);
+    ch.rotation.y = s * 0.6;
+    const tuft = part(head, gCone(), dark, s * 0.035, 0.28, -0.01, 0.03, 0.09, 0.03);
+    tuft.rotation.z = -s * 0.4;
+  }
+  part(head, gCone(), dark, 0, 0.3, -0.01, 0.03, 0.11, 0.03);
+
+  const tail = pivot(body, 0, 0.15, -0.21);
+  part(tail, gCone(), dark, 0, 0, -0.03, 0.07, 0.12, 0.05).rotation.x = -Math.PI / 2 + 0.3;
+
+  if (bow) addGoldBow(head, 0.1, 0.25, -0.02, 0.07); // a hair bow, beside the tufts
+  const bubble = petBubble(group, 'Cheep!', 0.98);
+  return bake({ group, body, head, flippers, tail, legs, eyes, bubble });
+}
+
+// How each pet looks, sounds and moves. `hop` is metres off the ground, `pace`
+// how fast the steps go, `rock` a side to side waddle and `walk` true for feet
+// that take turns, rather than front and back legs moving as pairs.
+const PET_KINDS = {
+  kitten: { build: buildKitten, sound: 'meow', scale: 0.85, pace: 7.5, hop: 0.17, legs: 0.7, rock: 0, walk: false, eyeR: 0.05 },
+  reindeer: { build: buildFawn, sound: 'bleat', scale: 0.9, pace: 6.5, hop: 0.3, legs: 0.85, rock: 0, walk: false, eyeR: 0.042 },
+  penguin: { build: buildChick, sound: 'cheep', scale: 0.85, pace: 9, hop: 0.1, legs: 0.6, rock: 0.2, walk: true, eyeR: 0.04 },
+};
 
 function buildReindeer({ detail = true, saddle = false, baked = true } = {}) {
   const group = new THREE.Group();
@@ -1335,6 +1571,8 @@ export function createCompanions(scene, ctx) {
   const barked = new Set();
   const discos = new Map(); // tree -> disco state
   let puppy = null;
+  let pet = null; // the pet of your own that came along tonight
+  const calmPets = prefersCalm();
   let ride = null;
   let clock = 0;
 
@@ -1494,31 +1732,100 @@ export function createCompanions(scene, ctx) {
     );
   }
 
+  // ==================================================== FOLLOWING PIP
+  // The puppy and the pets share this: `side` is which side of Pip's trail to
+  // keep to, so two followers walk apart. It moves p.group and keeps p.hop and
+  // p.moveAmt going for the animation. While `hold` is set p stays put, looking
+  // towards p.pointX, p.pointZ.
+
+  function followPip(p, dt, side, hold) {
+    const g = p.group;
+    const pos = g.position;
+    const pp = playerPos();
+    let speed = 0;
+    let moving = 0;
+    if (pp) {
+      const f = (ctx.player && ctx.player.facing) || 0;
+      const fx = Math.sin(f);
+      const fz = Math.cos(f);
+      const tx = pp.x - fx * 1.7 + side * fz * 0.85;
+      const tz = pp.z - fz * 1.7 - side * fx * 0.85;
+      const dx = tx - pos.x;
+      const dz = tz - pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 28) {
+        puff(pos.x, pos.y + 0.2, pos.z, 8, 0.7);
+        pos.x = tx;
+        pos.z = tz;
+        puff(tx, groundY(tx, tz) + 0.2, tz, 12, 0.8);
+      } else if (hold) {
+        p.yaw = dampAngle(p.yaw, Math.atan2(p.pointX - pos.x, p.pointZ - pos.z), 14, dt);
+      } else if (dist > 0.45) {
+        speed = Math.min(12, 1.6 + dist * 2.4);
+        const step = Math.min(dist, speed * dt);
+        pos.x += (dx / dist) * step;
+        pos.z += (dz / dist) * step;
+        moving = 1;
+        p.yaw = dampAngle(p.yaw, Math.atan2(dx, dz), 10, dt);
+      } else {
+        p.yaw = dampAngle(p.yaw, Math.atan2(pp.x - pos.x, pp.z - pos.z), 4, dt);
+      }
+    }
+    resolve(pos, 0.35);
+    pos.y = groundY(pos.x, pos.z);
+    g.rotation.y = p.yaw;
+
+    p.moveAmt = damp(p.moveAmt, moving, 8, dt);
+    if (moving) p.hop += dt * (p.pace + speed * 0.9);
+    else p.hop = damp(p.hop, Math.round(p.hop / Math.PI) * Math.PI, 10, dt);
+  }
+
+  // Pops the speech bubble in and out, p.barkT seconds after it was asked for.
+  function animateBubble(p) {
+    const bt = p.barkT;
+    if (bt >= 0 && bt < 1.6) {
+      const k = elasticOut(Math.min(1, bt / 0.35));
+      const fade = bt > 1.3 ? 1 - (bt - 1.3) / 0.3 : 1;
+      const sc = Math.max(0.001, k * fade);
+      p.bubble.visible = true;
+      p.bubble.scale.set(1.15 * sc, 0.67 * sc, 1);
+    } else p.bubble.visible = false;
+  }
+
+  // Next to Pip, on the given side of his trail.
+  function beside(g, side) {
+    const pp = playerPos();
+    const f = (ctx.player && ctx.player.facing) || 0;
+    const x = pp ? pp.x - Math.sin(f) * 1.6 + side * Math.cos(f) * 0.9 : 0;
+    const z = pp ? pp.z - Math.cos(f) * 1.6 - side * Math.sin(f) * 0.9 : 0;
+    g.position.set(x, 0, z);
+    resolve(g.position, 0.35);
+    g.position.y = groundY(g.position.x, g.position.z);
+    g.rotation.y = f;
+    return f;
+  }
+
   // ======================================================= SNOW PUPPY
 
   const sniffOpts = {
-    maxDist: 12,
+    maxDist: SNIFF_RANGE,
     filter: (it) => !!it && it.alive !== false && !it.opening && !barked.has(it.id != null ? it.id : it),
   };
 
   function spawnPuppy() {
     if (puppy) return;
-    const parts = buildPuppy();
+    const level = ctx.save ? petLevel(ctx.save, 'puppy') : 0;
+    const parts = buildPuppy({ bow: level >= MAX_PET_LEVEL });
     const g = parts.group;
-    const pp = playerPos();
-    const f = (ctx.player && ctx.player.facing) || 0;
-    const x = pp ? pp.x - Math.sin(f) * 1.6 + Math.cos(f) * 0.9 : 0;
-    const z = pp ? pp.z - Math.cos(f) * 1.6 - Math.sin(f) * 0.9 : 0;
-    g.position.set(x, 0, z);
-    resolve(g.position, 0.35);
-    g.position.y = groundY(g.position.x, g.position.z);
-    g.rotation.y = f;
+    const f = beside(g, 1);
     g.scale.setScalar(0.8);
     root.add(g);
+    sniffOpts.maxDist = SNIFF_RANGE * ((ctx.stats && ctx.stats.sniffMult) || 1);
     puppy = {
       ...parts,
       t: 0,
       hop: 0,
+      pace: 7,
       moveAmt: 0,
       yaw: f,
       sniffT: 1,
@@ -1550,7 +1857,7 @@ export function createCompanions(scene, ctx) {
         const r = col.nearest(here, sniffOpts);
         item = r && r.item;
       } else if (Array.isArray(col.items)) {
-        let best = 144;
+        let best = sniffOpts.maxDist * sniffOpts.maxDist;
         for (const it of col.items) {
           if (!sniffOpts.filter(it) || !it.position) continue;
           const d = (it.position.x - here.x) ** 2 + (it.position.z - here.z) ** 2;
@@ -1585,48 +1892,9 @@ export function createCompanions(scene, ctx) {
 
   function updatePuppy(dt, time) {
     const p = puppy;
-    const g = p.group;
-    const pos = g.position;
     p.t += dt;
-    const pp = playerPos();
-    let speed = 0;
-    let moving = 0;
-
     if (p.pointT > 0) p.pointT -= dt;
-    if (pp) {
-      const f = (ctx.player && ctx.player.facing) || 0;
-      const fx = Math.sin(f);
-      const fz = Math.cos(f);
-      const tx = pp.x - fx * 1.7 + fz * 0.85;
-      const tz = pp.z - fz * 1.7 - fx * 0.85;
-      const dx = tx - pos.x;
-      const dz = tz - pos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 28) {
-        puff(pos.x, pos.y + 0.2, pos.z, 8, 0.7);
-        pos.x = tx;
-        pos.z = tz;
-        puff(tx, groundY(tx, tz) + 0.2, tz, 12, 0.8);
-      } else if (p.pointT > 0) {
-        p.yaw = dampAngle(p.yaw, Math.atan2(p.pointX - pos.x, p.pointZ - pos.z), 14, dt);
-      } else if (dist > 0.45) {
-        speed = Math.min(12, 1.6 + dist * 2.4);
-        const step = Math.min(dist, speed * dt);
-        pos.x += (dx / dist) * step;
-        pos.z += (dz / dist) * step;
-        moving = 1;
-        p.yaw = dampAngle(p.yaw, Math.atan2(dx, dz), 10, dt);
-      } else {
-        p.yaw = dampAngle(p.yaw, Math.atan2(pp.x - pos.x, pp.z - pos.z), 4, dt);
-      }
-    }
-    resolve(pos, 0.35);
-    pos.y = groundY(pos.x, pos.z);
-    g.rotation.y = p.yaw;
-
-    p.moveAmt = damp(p.moveAmt, moving, 8, dt);
-    if (moving) p.hop += dt * (7 + speed * 0.9);
-    else p.hop = damp(p.hop, Math.round(p.hop / Math.PI) * Math.PI, 10, dt);
+    followPip(p, dt, 1, p.pointT > 0);
     const m = p.moveAmt;
     const s = Math.abs(Math.sin(p.hop));
     const appear = elasticOut(Math.min(1, p.t / 0.5));
@@ -1678,13 +1946,7 @@ export function createCompanions(scene, ctx) {
     for (const e of p.eyes) e.scale.y = 0.052 * 1.2 * blink;
 
     // "Woof!" bubble
-    if (bt >= 0 && bt < 1.6) {
-      const k = elasticOut(Math.min(1, bt / 0.35));
-      const fade = bt > 1.3 ? 1 - (bt - 1.3) / 0.3 : 1;
-      const sc = Math.max(0.001, k * fade);
-      p.bubble.visible = true;
-      p.bubble.scale.set(1.15 * sc, 0.67 * sc, 1);
-    } else p.bubble.visible = false;
+    animateBubble(p);
 
     // sniff for treats
     p.barkCooldown -= dt;
@@ -1692,6 +1954,112 @@ export function createCompanions(scene, ctx) {
     if (p.sniffT <= 0) {
       p.sniffT = 0.4;
       if (p.barkCooldown <= 0 && p.t > 1.5) sniff();
+    }
+  }
+
+  // ===================================================== PETS
+  // One pet of your own at a time, on Pip's other side from the puppy. The
+  // perks are game rules (stats and treats.js); this is only the friend trotting
+  // along. A level 5 pet wears its gold bow.
+
+  function spawnPet(id, level = 1) {
+    const kind = PET_KINDS[id];
+    if (!kind) return;
+    removePet();
+    const parts = kind.build({ bow: level >= MAX_PET_LEVEL });
+    const g = parts.group;
+    const f = beside(g, -1);
+    g.scale.setScalar(kind.scale);
+    root.add(g);
+    pet = {
+      ...parts,
+      id,
+      kind,
+      t: 0,
+      hop: 0,
+      pace: kind.pace,
+      moveAmt: 0,
+      yaw: f,
+      barkT: -0.25,
+      happyT: 0,
+      chatT: 18 + Math.random() * 14,
+      blinkT: 2 + Math.random() * 2,
+    };
+    puff(g.position.x, g.position.y + 0.2, g.position.z, 16, 0.8, 1.6);
+    sparkle(g.position.x, g.position.y + 0.5, g.position.z, 12, 0xffffff, 2);
+    play(kind.sound);
+  }
+
+  function removePet() {
+    if (!pet) return;
+    removeModel(pet.group);
+    pet = null;
+  }
+
+  // A happy hop, a bubble and its sound, when game code has good news. With an
+  // id it only happens if that pet came along. Returns where the pet is, or null.
+  function cheerPet(id) {
+    if (!pet || (id && pet.id !== id)) return null;
+    pet.happyT = 0.7;
+    pet.barkT = 0;
+    play(pet.kind.sound);
+    const pos = pet.group.position;
+    sparkle(pos.x, pos.y + 0.6, pos.z, 8, 0xffffff, 1.6);
+    return pos;
+  }
+
+  function updatePet(dt, time) {
+    const p = pet;
+    const k = p.kind;
+    const calm = calmPets ? 0.35 : 1;
+    p.t += dt;
+    followPip(p, dt, -1, false);
+    const m = p.moveAmt;
+    const s = Math.abs(Math.sin(p.hop));
+    const appear = elasticOut(Math.min(1, p.t / 0.5));
+
+    p.happyT = Math.max(0, p.happyT - dt);
+    const happy = p.happyT > 0 ? Math.sin((1 - p.happyT / 0.7) * Math.PI) : 0;
+    const sq = 1 + calm * m * (s * 0.08 - (1 - Math.min(1, s * 4)) * 0.12);
+    const xz = appear / Math.sqrt(sq);
+    p.body.position.y = (s * k.hop * m + happy * 0.3) * calm;
+    p.body.scale.set(xz, appear * sq, xz);
+    p.body.rotation.x = calm * m * Math.cos(p.hop) * 0.14 - (1 - m) * 0.05;
+    p.body.rotation.z = calm * k.rock * m * Math.sin(p.hop);
+
+    const swing = Math.cos(p.hop * 2) * k.legs * m;
+    for (let i = 0; i < p.legs.length; i++) {
+      const forward = k.walk ? i % 2 === 0 : i < 2;
+      p.legs[i].rotation.x = forward ? -swing : swing;
+    }
+    if (p.ears) {
+      for (let i = 0; i < p.ears.length; i++) {
+        p.ears[i].rotation.x = -Math.cos(p.hop * 2) * 0.3 * m + Math.sin(time * 1.7 + i) * 0.05;
+      }
+    }
+    if (p.flippers) {
+      const flap = Math.sin(p.hop * 2) * 0.35 * m + happy * 0.9;
+      p.flippers[0].rotation.z = -0.3 - flap;
+      p.flippers[1].rotation.z = 0.3 + flap;
+    }
+    p.tail.rotation.y = Math.sin(time * (5 + happy * 9)) * (0.35 + 0.3 * m);
+    p.head.rotation.x = -happy * 0.25;
+    p.head.rotation.z = (1 - m) * Math.sin(time * 0.8) * 0.16 * calm;
+
+    p.blinkT -= dt;
+    const blink = p.blinkT < 0 ? 0.15 : 1;
+    if (p.blinkT < -0.12) p.blinkT = 2 + Math.random() * 3;
+    for (const e of p.eyes) e.scale.y = k.eyeR * 1.2 * blink;
+
+    p.barkT += dt;
+    animateBubble(p);
+
+    // says something now and then, so it feels like company
+    p.chatT -= dt;
+    if (p.chatT <= 0) {
+      p.chatT = 22 + Math.random() * 16;
+      p.barkT = 0;
+      play(k.sound);
     }
   }
 
@@ -2953,6 +3321,13 @@ export function createCompanions(scene, ctx) {
         console.error('[companions] puppy update failed', err);
       }
     }
+    if (pet) {
+      try {
+        updatePet(dt, t);
+      } catch (err) {
+        console.error('[companions] pet update failed', err);
+      }
+    }
     for (let i = actors.length - 1; i >= 0; i--) {
       const a = actors[i];
       let alive = false;
@@ -2990,6 +3365,7 @@ export function createCompanions(scene, ctx) {
       ride = null;
     }
     removePuppy();
+    removePet();
     barked.clear();
     stopStorm();
     puffs.reset();
@@ -3018,15 +3394,22 @@ export function createCompanions(scene, ctx) {
     get hasPuppy() {
       return !!puppy;
     },
+    get petId() {
+      return pet ? pet.id : null;
+    },
     get riding() {
       return !!ride && ride.state === 'ride';
     },
     get activeCount() {
-      return actors.length + (puppy ? 1 : 0) + (storm.active ? 1 : 0);
+      return actors.length + (puppy ? 1 : 0) + (pet ? 1 : 0) + (storm.active ? 1 : 0);
     },
     root,
     spawnPuppy,
     removePuppy,
+    spawnPet,
+    removePet,
+    cheerPet,
+    snowPuff: puff,
     jackInBox,
     reindeerRide,
     snowballStorm,

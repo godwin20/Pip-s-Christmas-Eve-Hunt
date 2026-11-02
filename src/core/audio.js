@@ -12,6 +12,7 @@
 const SOUND_NAMES = [
   'bang', 'pop', 'boing', 'blip', 'coin', 'jingle', 'sadTrombone', 'hoho', 'bark', 'whoosh',
   'click', 'buy', 'error', 'unlock', 'disco', 'footstep', 'slide', 'snowball', 'tick',
+  'crack', 'shake', 'bauble', 'meow', 'bleat', 'cheep',
 ];
 
 const MASTER_VOL = 0.85;
@@ -24,6 +25,7 @@ const MIN_GAP = {
   footstep: 0.07, tick: 0.05, blip: 0.08, coin: 0.03, click: 0.025, jingle: 0.1, bark: 0.25,
   whoosh: 0.08, slide: 0.2, snowball: 0.03, pop: 0.03, bang: 0.05, boing: 0.1, hoho: 0.6,
   sadTrombone: 0.5, unlock: 0.4, buy: 0.08, error: 0.12, disco: 0.5,
+  crack: 0.05, shake: 0.15, bauble: 0.08, meow: 0.3, bleat: 0.3, cheep: 0.2,
 };
 
 const settings = { sfx: true, music: true, voice: true };
@@ -572,6 +574,56 @@ const SOUNDS = {
     tone(t, { f, f1: f * 0.8, dur: 0.045, peak: 0.3, attack: 0.0008, dest: out });
     noise(t, { filter: 'bandpass', f: f * 2, q: 4, attack: 0.0005, dur: 0.02, peak: 0.22, dest: out });
     tone(t, { type: 'triangle', f: f / 2, dur: 0.055, peak: 0.09, attack: 0.001, dest: out });
+  },
+
+  // A candy cane snapping: two bright crisp cracks and a tinkle of sugar.
+  crack(t, out, p) {
+    noise(t, { filter: 'highpass', f: 2600 * p, q: 0.7, attack: 0.0006, dur: 0.04, peak: 0.55, dest: out });
+    noise(t + 0.045, { filter: 'bandpass', f: 3800 * p, q: 1.4, attack: 0.0006, dur: 0.035, peak: 0.3, dest: out });
+    tone(t, { type: 'triangle', f: 1000 * p, f1: 480 * p, glide: 0.06, dur: 0.08, peak: 0.16, attack: 0.001, dest: out });
+    bell(t + 0.08, 2637 * p, 0.4, 0.05, out);
+    bell(t + 0.13, 3520 * p, 0.45, 0.04, out);
+    bell(t + 0.19, 4186 * p, 0.45, 0.03, out);
+  },
+
+  // Branches rustling, then snow flumping down.
+  shake(t, out, p) {
+    for (let i = 0; i < 5; i++) {
+      noise(t + i * 0.07, { filter: 'bandpass', f: rand(1800, 3200) * p, q: 0.8, attack: 0.012, dur: 0.1, peak: 0.13 * (1 - i * 0.13), dest: out, pan0: -0.3, pan1: 0.3 });
+    }
+    noise(t + 0.12, { filter: 'lowpass', f: 750, pts: [[0.32, 230]], q: 0.7, attack: 0.02, dur: 0.34, peak: 0.24, dest: out });
+  },
+
+  // A glass bauble picked up: a little rising chime.
+  bauble(t, out, p) {
+    tone(t, { type: 'triangle', f: 880 * p, dur: 0.18, peak: 0.08, attack: 0.002, dest: out });
+    bell(t, 1760 * p, 0.7, 0.1, out, 2.76);
+    bell(t + 0.08, 2637 * p, 0.8, 0.09, out, 2.76);
+    bell(t + 0.17, 3520 * p, 0.9, 0.07, out, 2.76);
+  },
+
+  // Frost Kitten: a small "mew", the filter opening and closing like a mouth.
+  meow(t, out, p) {
+    const pitch = [[0.1, 900 * p], [0.34, 560 * p]];
+    tone(t, { type: 'sawtooth', f: 620 * p, pts: pitch, dur: 0.36, peak: 0.15, attack: 0.03, filter: 'bandpass', ff: 1100 * p, ffPts: [[0.12, 2400 * p], [0.34, 900 * p]], fq: 2.2, dest: out });
+    tone(t, { f: 620 * p, pts: pitch, dur: 0.32, peak: 0.08, attack: 0.03, dest: out });
+  },
+
+  // Baby Reindeer: a wobbly little "meh-eh".
+  bleat(t, out, p) {
+    const o = tone(t, { type: 'sawtooth', f: 460 * p, pts: [[0.07, 560 * p], [0.34, 470 * p]], dur: 0.36, peak: 0.15, attack: 0.015, filter: 'bandpass', ff: 1300 * p, fq: 1.6, dest: out });
+    vibrato(o, t + 0.05, 14, 34 * p, 22 * p, 0.3);
+    tone(t, { type: 'triangle', f: 460 * p, f1: 500 * p, dur: 0.3, peak: 0.06, attack: 0.015, dest: out });
+  },
+
+  // Penguin Chick: two tiny high cheeps.
+  cheep(t, out, p) {
+    for (let k = 0; k < 2; k++) {
+      const tt = t + k * 0.11;
+      const base = (k ? 2300 : 2050) * p;
+      tone(tt, { f: base, pts: [[0.03, base * 1.35], [0.08, base * 0.9]], dur: 0.085, peak: 0.13, attack: 0.003, dest: out });
+      tone(tt, { type: 'triangle', f: base * 0.5, dur: 0.06, peak: 0.04, attack: 0.003, dest: out });
+    }
   },
 };
 

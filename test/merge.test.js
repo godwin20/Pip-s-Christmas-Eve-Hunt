@@ -13,6 +13,9 @@ import {
 } from '../src/cloud/merge.js';
 import { defaultSave, syncCoinLedger } from '../src/core/save.js';
 import { spentOnUpgrades, buyUpgrade, UPGRADES } from '../src/game/upgrades.js';
+import { PETS, MAX_PET_LEVEL, spentCandy, buyPet, feedPet, addCandy, setActivePet } from '../src/game/pets.js';
+import { BAUBLES, TREE_SLOTS, placeBauble, removeBauble, collectBauble, GOLDEN_STAR_ID } from '../src/game/baubles.js';
+import { ADVENT_TUNING, openDoor } from '../src/game/advent.js';
 import { isValidNameParts, ADJECTIVES, NOUNS, NAME_NUM_MAX } from '../src/cloud/names.js';
 import { JOKES } from '../src/data/jokes.js';
 
@@ -26,6 +29,33 @@ function save(over = {}) {
 
 function coinsOk(s) {
   return s.coins === s.coinsEarned - spentOnUpgrades(s.upgrades) && s.coins >= 0;
+}
+
+function candyOk(s) {
+  return s.candy === s.candyEarned - spentCandy(s.pets) && s.candy >= 0;
+}
+
+// A save with candy, keeping candy === candyEarned - spent.
+function candySave(over = {}) {
+  const pets = over.pets ?? {};
+  const candyEarned = over.candyEarned ?? 0;
+  return save({ ...over, pets, candyEarned, candy: candyEarned - spentCandy(pets) });
+}
+
+// The two saves after each has pushed once, in the order cloud.js would:
+// A's copy reaches the cloud, B merges it, then A merges B's result.
+function syncBoth(a, b) {
+  const cloudAfterA = toCloudSave(a);
+  const onB = mergeSaves(b, cloudAfterA);
+  const onA = mergeSaves(a, toCloudSave(onB));
+  return [onA, onB];
+}
+
+// A cloud copy from a version of the game before pets, baubles and the calendar.
+function oldCloud(s) {
+  const copy = toCloudSave(s);
+  for (const key of ['candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent']) delete copy[key];
+  return copy;
 }
 
 describe('mergeSaves: missing or empty remote', () => {
@@ -261,15 +291,411 @@ describe('mergeSaves: local-only fields and idempotence', () => {
   });
 });
 
+describe('mergeSaves: candy', () => {
+  it('takes the higher candyEarned and derives candy from it', () => {
+    const local = candySave({ candyEarned: 100, pets: { kitten: 1 } });
+    const remote = toCloudSave(candySave({ candyEarned: 70 }));
+    const m = mergeSaves(local, remote);
+    expect(m).toMatchObject({ candyEarned: 100, candy: 60 });
+    expect(candyOk(m)).toBe(true);
+  });
+
+  it('cannot duplicate candy when two devices buy different pets', () => {
+    const start = candySave({ candyEarned: 200 });
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    expect(buyPet(a, 'kitten')).toBe(true); // 40
+    expect(buyPet(b, 'reindeer')).toBe(true); // 80
+    for (const s of syncBoth(a, b)) {
+      expect(s.pets).toEqual({ kitten: 1, reindeer: 1 });
+      expect(s).toMatchObject({ candyEarned: 200, candy: 200 - 40 - 80 });
+      expect(candyOk(s)).toBe(true);
+    }
+  });
+
+  it('keeps the highest level when two devices feed the same pet', () => {
+    const start = candySave({ candyEarned: 200, pets: { kitten: 1 } });
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    feedPet(a, 'kitten');
+    feedPet(a, 'kitten');
+    feedPet(b, 'kitten');
+    for (const s of syncBoth(a, b)) {
+      expect(s.pets).toEqual({ kitten: 3 });
+      expect(s.candy).toBe(200 - 40 - 10 - 20);
+      expect(candyOk(s)).toBe(true);
+    }
+  });
+
+  it('never goes negative: candyEarned rises to the amount spent', () => {
+    // Each device could afford its own pet, but not both.
+    const start = candySave({ candyEarned: 100 });
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    buyPet(a, 'kitten');
+    buyPet(b, 'reindeer');
+    for (const s of syncBoth(a, b)) {
+      expect(s.candy).toBe(0);
+      expect(s.candyEarned).toBe(spentCandy({ kitten: 1, reindeer: 1 }));
+      expect(candyOk(s)).toBe(true);
+    }
+  });
+
+  it('ignores a candy field in the remote, and in local too', () => {
+    const local = candySave({ candyEarned: 100 });
+    local.candy = 5000;
+    const m = mergeSaves(local, { ...toCloudSave(local), candy: 99999 });
+    expect(m.candy).toBe(100);
+  });
+
+  it('counts candy earned on this device since the last sync', () => {
+    const local = candySave({ candyEarned: 10 });
+    addCandy(local, 6);
+    const m = mergeSaves(local, toCloudSave(candySave({ candyEarned: 10 })));
+    expect(m).toMatchObject({ candy: 16, candyEarned: 16 });
+  });
+});
+
+describe('mergeSaves: pets', () => {
+  it('keeps the highest level per pet', () => {
+    const local = candySave({ candyEarned: 500, pets: { puppy: 3, kitten: 1 } });
+    const remote = toCloudSave(candySave({ candyEarned: 500, pets: { puppy: 1, kitten: 4, penguin: 2 } }));
+    expect(mergeSaves(local, remote).pets).toEqual({ puppy: 3, kitten: 4, penguin: 2 });
+  });
+
+  it('cleans levels the rules would refuse, rather than failing every push', () => {
+    const cloud = toCloudSave({ pets: { kitten: 9, puppy: 0, reindeer: -1, penguin: 'x', 'a b': 2, ok: 2.4 } });
+    expect(cloud.pets).toEqual({ kitten: MAX_PET_LEVEL, ok: 2 });
+  });
+
+  it('treats ids like constructor as plain keys', () => {
+    const local = candySave({ pets: { kitten: 1 }, candyEarned: 40 });
+    const remote = { ...toCloudSave(save()), pets: { constructor: 2 } };
+    const m = mergeSaves(local, remote);
+    expect(m.pets).toEqual({ kitten: 1, constructor: 2 });
+    expect(candyOk(m)).toBe(true);
+  });
+
+  it('keeps activePet local: never sent, never taken from the remote', () => {
+    const local = candySave({ candyEarned: 200, pets: { kitten: 1, penguin: 1 }, activePet: 'kitten' });
+    expect(toCloudSave(local)).not.toHaveProperty('activePet');
+    const m = mergeSaves(local, { ...toCloudSave(local), activePet: 'penguin' });
+    expect(m.activePet).toBe('kitten');
+  });
+
+  it('keeps a pet choice on another device through a merge', () => {
+    const remote = candySave({ candyEarned: 40, pets: { kitten: 1 }, activePet: 'kitten' });
+    const local = candySave({ candyEarned: 40, pets: { kitten: 1 } });
+    expect(setActivePet(local, 'kitten')).toBe(true);
+    expect(mergeSaves(local, toCloudSave(remote)).activePet).toBe('kitten');
+  });
+});
+
+describe('mergeSaves: baubles', () => {
+  it('unions foundBaubles, local order first', () => {
+    const local = save({ foundBaubles: ['ruby', 'icicle'] });
+    const remote = toCloudSave(save({ foundBaubles: ['emerald', 'ruby'] }));
+    expect(mergeSaves(local, remote).foundBaubles).toEqual(['ruby', 'icicle', 'emerald']);
+  });
+
+  it('keeps a design found on either device', () => {
+    const start = save();
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    collectBauble(a, 'ruby');
+    collectBauble(b, 'icicle');
+    for (const s of syncBoth(a, b)) expect([...s.foundBaubles].sort()).toEqual(['icicle', 'ruby']);
+  });
+
+  it('never loses a design the winning tree hangs', () => {
+    const a = save({ foundBaubles: ['ruby'] });
+    const b = save({ foundBaubles: ['icicle'] });
+    placeBauble(a, 's0', 'ruby', 1000);
+    placeBauble(b, 's0', 'icicle', 2000);
+    for (const s of syncBoth(a, b)) {
+      expect(s.tree).toEqual({ s0: 'icicle' });
+      expect(s.foundBaubles).toContain('icicle');
+    }
+  });
+});
+
+describe('mergeSaves: the tree', () => {
+  const tree = (over) => save({ foundBaubles: ['ruby', 'icicle'], ...over });
+
+  it('takes the newest tree whole, both ways', () => {
+    const older = tree({ tree: { s0: 'ruby', s1: 'icicle' }, treeSetAt: 1000 });
+    const newer = tree({ tree: { s5: 'ruby' }, treeSetAt: 2000 });
+    for (const m of [mergeSaves(older, toCloudSave(newer)), mergeSaves(newer, toCloudSave(older))]) {
+      expect(m.tree).toEqual({ s5: 'ruby' });
+      expect(m.treeSetAt).toBe(2000);
+    }
+  });
+
+  it('lets a newer empty tree win, so taking baubles off sticks', () => {
+    const start = tree({ tree: { s0: 'ruby' }, treeSetAt: 1000 });
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    removeBauble(a, 's0', 2000);
+    for (const s of syncBoth(a, b)) expect(s).toMatchObject({ tree: {}, treeSetAt: 2000 });
+  });
+
+  it('settles a tie on the remote tree, so devices agree', () => {
+    const a = tree({ tree: { s0: 'ruby' }, treeSetAt: 1000 });
+    const b = tree({ tree: { s0: 'icicle' }, treeSetAt: 1000 });
+    expect(mergeSaves(a, toCloudSave(b)).tree).toEqual(b.tree);
+    expect(mergeSaves(b, toCloudSave(a)).tree).toEqual(a.tree);
+    const [onA, onB] = syncBoth(a, b);
+    expect(onA.tree).toEqual(onB.tree);
+  });
+
+  it('a change on a device with a slow clock still wins', () => {
+    const start = tree({ tree: { s0: 'ruby' }, treeSetAt: 9000 });
+    const slow = structuredClone(start);
+    placeBauble(slow, 's1', 'icicle', 10);
+    expect(mergeSaves(start, toCloudSave(slow)).tree).toEqual({ s0: 'ruby', s1: 'icicle' });
+  });
+
+  it('cleans what the rules would refuse, rather than failing every push', () => {
+    const cloud = toCloudSave({
+      tree: { s0: 'ruby', s1: 'ruby', s2: 'a b', s3: 7, s12: 'icicle', x: 'icicle', constructor: 'ruby' },
+      treeSetAt: -5,
+    });
+    expect(cloud.tree).toEqual({ s0: 'ruby', s3: '7' });
+    expect(cloud.treeSetAt).toBe(0);
+    expect(toCloudSave({ tree: ['ruby'], treeSetAt: 'x' })).toMatchObject({ tree: {}, treeSetAt: 0 });
+    expect(toCloudSave({ treeSetAt: 9e15 }).treeSetAt).toBe(CLOUD_LIMITS.setAt);
+  });
+});
+
+describe('mergeSaves: the advent calendar', () => {
+  const advent = (year, opened) => save({ advent: { year, opened } });
+
+  it('unions opened doors within the same year, in door order', () => {
+    const m = mergeSaves(advent(2026, [5, 9]), toCloudSave(advent(2026, [1, 5, 24])));
+    expect(m.advent).toEqual({ year: 2026, opened: [1, 5, 9, 24] });
+  });
+
+  it('lets the newer year win outright, both ways: year rollover', () => {
+    const last = advent(2026, [1, 2, 3, 24]);
+    const next = advent(2027, [1]);
+    expect(mergeSaves(last, toCloudSave(next)).advent).toEqual({ year: 2027, opened: [1] });
+    expect(mergeSaves(next, toCloudSave(last)).advent).toEqual({ year: 2027, opened: [1] });
+  });
+
+  it('takes whichever side has one', () => {
+    expect(mergeSaves(save(), toCloudSave(advent(2026, [1]))).advent).toEqual({ year: 2026, opened: [1] });
+    expect(mergeSaves(advent(2026, [1]), toCloudSave(save())).advent).toEqual({ year: 2026, opened: [1] });
+    expect(mergeSaves(save(), toCloudSave(save())).advent).toBeNull();
+  });
+
+  it('keeps doors opened on two devices, in any order', () => {
+    const when = new Date(2026, 11, 9, 12);
+    const a = save();
+    const b = save();
+    openDoor(a, 3, when);
+    openDoor(a, 1, when);
+    openDoor(b, 2, when);
+    for (const s of syncBoth(a, b)) expect(s.advent).toEqual({ year: 2026, opened: [1, 2, 3] });
+  });
+
+  it('cannot pay a door twice through a merge: the coin ledger only takes the max', () => {
+    const when = new Date(2026, 11, 9, 12);
+    const start = save({ coinsEarned: 50 });
+    const a = structuredClone(start);
+    const b = structuredClone(start);
+    for (const s of [a, b]) {
+      const { coins } = openDoor(s, 1, when);
+      s.coins += coins;
+      s.coinsEarned += coins;
+    }
+    for (const s of syncBoth(a, b)) {
+      expect(s.coinsEarned).toBe(60);
+      expect(coinsOk(s)).toBe(true);
+    }
+  });
+
+  it('cleans what the rules would refuse, rather than failing every push', () => {
+    expect(toCloudSave({ advent: { year: 2026, opened: [2, 2, 0, 25, 'x', 1], extra: true } }).advent).toEqual({ year: 2026, opened: [1, 2] });
+    expect(toCloudSave({ advent: { year: 1999, opened: [1] } }).advent).toBeNull();
+    expect(toCloudSave({ advent: 'none' }).advent).toBeNull();
+  });
+});
+
+describe('mergeSaves: resets and the new fields', () => {
+  const played = () =>
+    candySave({
+      candyEarned: 300,
+      pets: { kitten: 3, puppy: 2 },
+      activePet: 'kitten',
+      foundBaubles: ['ruby', 'icicle'],
+      tree: { s0: 'ruby' },
+      treeSetAt: 999999,
+      advent: { year: 2026, opened: [1, 2, 3] },
+    });
+  const reset = () => save({ epoch: 1, profile: { ...NAME_B, setAt: 5 } });
+
+  it('a remote reset clears them all, however new the tree', () => {
+    const m = mergeSaves(played(), toCloudSave(reset()));
+    expect(m).toMatchObject({ epoch: 1, candy: 0, candyEarned: 0, pets: {}, foundBaubles: [], tree: {}, treeSetAt: 0, advent: null });
+  });
+
+  it('a remote reset forgets the local pet choice, since that pet has gone', () => {
+    const m = mergeSaves(played(), toCloudSave(reset()));
+    expect(m.activePet).toBeNull();
+  });
+
+  it('a local reset beats older remote progress outright', () => {
+    const local = reset();
+    expect(mergeSaves(local, toCloudSave(played()))).toEqual(local);
+  });
+
+  it('a stale device cannot bring pets or the tree back after a reset', () => {
+    const resetCloud = toCloudSave(mergeSaves(reset(), toCloudSave(played())));
+    const stale = played();
+    const m = mergeSaves(stale, resetCloud);
+    expect(toCloudSave(m)).toMatchObject({ epoch: 1, candyEarned: 0, pets: {}, foundBaubles: [], tree: {}, advent: null });
+  });
+
+  it('new progress after a reset on both sides still merges', () => {
+    const a = candySave({ epoch: 1, candyEarned: 50, pets: { kitten: 1 } });
+    const b = candySave({ epoch: 1, candyEarned: 30, foundBaubles: ['ruby'] });
+    const m = mergeSaves(a, toCloudSave(b));
+    expect(m).toMatchObject({ pets: { kitten: 1 }, foundBaubles: ['ruby'], candyEarned: 50, candy: 10 });
+  });
+});
+
+describe('mergeSaves: older versions of the game', () => {
+  const full = () =>
+    candySave({
+      coinsEarned: 200,
+      candyEarned: 90,
+      pets: { kitten: 2 },
+      activePet: 'kitten',
+      foundBaubles: ['ruby'],
+      tree: { s0: 'ruby' },
+      treeSetAt: 5000,
+      advent: { year: 2026, opened: [1] },
+    });
+
+  it('keeps every new field when a cached version wrote the cloud copy', () => {
+    const local = full();
+    const m = mergeSaves(local, oldCloud(local));
+    expect(m).toEqual(local);
+  });
+
+  it('merges an old copy that has new old-style progress', () => {
+    const local = full();
+    const m = mergeSaves(local, oldCloud(candySave({ coinsEarned: 700, totalPresents: 90 })));
+    expect(m).toMatchObject({ coinsEarned: 700, totalPresents: 90, candyEarned: 90, candy: 40, pets: { kitten: 2 } });
+    expect(toCloudSave(m)).toMatchObject({ tree: { s0: 'ruby' }, treeSetAt: 5000, advent: { year: 2026, opened: [1] } });
+  });
+
+  it('gives an old local save the new fields from the cloud', () => {
+    const local = save({ coinsEarned: 200 });
+    for (const key of ['candy', 'candyEarned', 'pets', 'activePet', 'foundBaubles', 'tree', 'treeSetAt', 'advent']) delete local[key];
+    const m = mergeSaves(local, toCloudSave(full()));
+    expect(m).toMatchObject({ candyEarned: 90, candy: 40, pets: { kitten: 2 }, foundBaubles: ['ruby'], tree: { s0: 'ruby' } });
+    expect(m.activePet).toBeNull();
+    expect(candyOk(m)).toBe(true);
+  });
+});
+
+describe('mergeSaves: the new fields stay stable', () => {
+  const local = () =>
+    candySave({
+      candyEarned: 120,
+      pets: { kitten: 1, puppy: 2 },
+      activePet: 'kitten',
+      foundBaubles: ['ruby', 'icicle'],
+      tree: { s0: 'ruby' },
+      treeSetAt: 4000,
+      advent: { year: 2026, opened: [1, 2] },
+    });
+
+  it('merging a save with its own cloud copy changes nothing', () => {
+    expect(mergeSaves(local(), toCloudSave(local()))).toEqual(local());
+  });
+
+  it('is idempotent', () => {
+    const remotes = [
+      toCloudSave(candySave({ candyEarned: 400, pets: { penguin: 2 }, foundBaubles: ['emerald'], tree: { s9: 'emerald' }, treeSetAt: 8000, advent: { year: 2026, opened: [5] } })),
+      toCloudSave(candySave({ advent: { year: 2027, opened: [1] } })),
+      toCloudSave(save({ epoch: 2 })),
+      oldCloud(save({ coinsEarned: 5 })),
+    ];
+    for (const remote of remotes) {
+      const once = mergeSaves(local(), remote);
+      expect(mergeSaves(once, remote)).toEqual(once);
+      expect(mergeSaves(once, toCloudSave(once))).toEqual(once);
+    }
+  });
+
+  it('does not mutate its inputs', () => {
+    const l = local();
+    const remote = toCloudSave(candySave({ candyEarned: 400, pets: { penguin: 2 }, tree: { s9: 'emerald' }, treeSetAt: 8000 }));
+    const before = [structuredClone(l), structuredClone(remote)];
+    mergeSaves(l, remote);
+    expect([l, remote]).toEqual(before);
+  });
+
+  it('sees two saves that differ only in a new field as different', () => {
+    expect(sameSave(local(), local())).toBe(true);
+    expect(sameSave(local(), { ...local(), pets: { kitten: 2, puppy: 2 } })).toBe(false);
+    expect(sameSave(local(), { ...local(), tree: {} })).toBe(false);
+    expect(sameSave(local(), { ...local(), advent: { year: 2026, opened: [1] } })).toBe(false);
+  });
+
+  it('fromCloudSave brings the new fields, derives candy and keeps a pet choice it still owns', () => {
+    const device = candySave({ candyEarned: 40, pets: { kitten: 1 }, activePet: 'kitten' });
+    const full = fromCloudSave(toCloudSave(local()), device);
+    expect(full).toMatchObject({ candyEarned: 120, candy: 120 - 40 - 10, pets: { kitten: 1, puppy: 2 }, activePet: 'kitten' });
+    expect(full.tree).toEqual({ s0: 'ruby' });
+    expect(fromCloudSave(toCloudSave(candySave()), device).activePet).toBeNull();
+  });
+});
+
+describe('CLOUD_LIMITS: the new caps', () => {
+  it('fit everything in the game', () => {
+    expect(PETS.length).toBeLessThanOrEqual(CLOUD_LIMITS.pets);
+    expect(MAX_PET_LEVEL).toBe(CLOUD_LIMITS.petLevel);
+    expect(BAUBLES.length).toBe(CLOUD_LIMITS.foundBaubles);
+    expect(TREE_SLOTS.length).toBe(CLOUD_LIMITS.tree);
+    expect(ADVENT_TUNING.doors).toBe(CLOUD_LIMITS.adventDoors);
+    expect(ADVENT_TUNING.firstYear).toBe(CLOUD_LIMITS.adventYearMin);
+    expect(ADVENT_TUNING.lastYear).toBe(CLOUD_LIMITS.adventYearMax);
+  });
+
+  it('cap the new lists and maps', () => {
+    const many = (n, p) => Array.from({ length: n }, (_, i) => `${p}${i}`);
+    const cloud = toCloudSave({
+      pets: Object.fromEntries(many(30, 'p').map((id) => [id, 1])),
+      foundBaubles: many(40, 'b'),
+    });
+    expect(Object.keys(cloud.pets)).toHaveLength(CLOUD_LIMITS.pets);
+    expect(cloud.foundBaubles).toHaveLength(CLOUD_LIMITS.foundBaubles);
+    expect(cloud.foundBaubles[0]).toBe('b0');
+  });
+
+  it('keep the whole collection, Golden Star included, through a merge', () => {
+    const all = BAUBLES.map((b) => b.id);
+    const m = mergeSaves(save({ foundBaubles: all.slice(0, 12) }), toCloudSave(save({ foundBaubles: all.slice(12) })));
+    expect(m.foundBaubles).toHaveLength(24);
+    expect(m.foundBaubles).toContain(GOLDEN_STAR_ID);
+  });
+});
+
 describe('toCloudSave / fromCloudSave', () => {
-  it('strips coins, settings and version', () => {
+  it('strips coins, candy, settings, activePet and version', () => {
     const cloud = toCloudSave(save({ coinsEarned: 50 }));
     expect(cloud).not.toHaveProperty('coins');
+    expect(cloud).not.toHaveProperty('candy');
     expect(cloud).not.toHaveProperty('settings');
+    expect(cloud).not.toHaveProperty('activePet');
     expect(cloud).not.toHaveProperty('version');
     expect(Object.keys(cloud).sort()).toEqual(
       ['bestPresentsInNight', 'coinsEarned', 'epoch', 'foundJokes', 'nights', 'profile', 'totalCrackers',
-        'totalPresents', 'unlocked', 'upgrades', 'wardrobe'].sort(),
+        'totalPresents', 'unlocked', 'upgrades', 'wardrobe',
+        'candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent'].sort(),
     );
   });
 
@@ -342,6 +768,22 @@ describe('boardScores', () => {
     });
     expect(boardScores({ totalPresents: 3, bestPresentsInNight: 8 }).bestNight).toBe(3);
     expect(boardScores(null)).toEqual({ bestNight: 0, totalPresents: 0, jokesFound: 0, nights: 0 });
+  });
+
+  it('takes no notice of candy, pets, baubles or the calendar', () => {
+    const base = { totalPresents: 140, bestPresentsInNight: 25, nights: 12, foundJokes: ['j001'] };
+    const extras = {
+      candy: 900,
+      candyEarned: 900,
+      pets: { kitten: 5 },
+      activePet: 'kitten',
+      foundBaubles: ['ruby', 'icicle'],
+      tree: { s0: 'ruby' },
+      treeSetAt: 5000,
+      advent: { year: 2026, opened: [1] },
+    };
+    expect(boardScores({ ...base, ...extras })).toEqual(boardScores(base));
+    expect(Object.keys(boardScores(save(extras))).sort()).toEqual(['bestNight', 'jokesFound', 'nights', 'totalPresents']);
   });
 
   it('allows every joke in the game on the board', () => {

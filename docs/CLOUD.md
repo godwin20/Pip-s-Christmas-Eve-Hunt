@@ -44,12 +44,20 @@ CloudSave = {
   foundJokes: [jokeId string],              // at most 200
   unlocked: [milestoneId string],           // at most 20
   wardrobe: { [milestoneId]: bool },        // at most 20 keys
-  profile: { adj: int, noun: int, num: int, hidden: bool, setAt: int (ms) }
+  profile: { adj: int, noun: int, num: int, hidden: bool, setAt: int (ms) },
+  // Optional: versions of the game from before these fields don't send them.
+  candyEarned: int,                         // lifetime candy income
+  pets: { [petId]: int 1..5 },              // at most 10 keys
+  foundBaubles: [baubleId string],          // at most 24
+  tree: { [slot s0..s11]: baubleId string }, // each design at most once
+  treeSetAt: int (ms),                      // last tree change
+  advent: { year: 2026..2100, opened: [int 1..24] } | null
 }
 ```
 
-The cloud copy has no `coins`, `settings` or `version`. Coins are derived (see
-below), and sound settings stay on each device.
+The cloud copy has no `coins`, `candy`, `settings`, `activePet` or `version`.
+Coins and candy are derived (see below), and sound settings and the chosen pet
+stay on each device.
 
 `leaderboard/{uid}`: public to signed-in players, written only by its owner.
 
@@ -81,6 +89,31 @@ upgrades, so buying different upgrades on two devices can't create coins. Income
 earned on two devices at the same time between syncs keeps only the larger
 amount. That loses a little; it never invents any.
 
+## Candy without duplication
+
+Candy works exactly like coins:
+
+```
+candy === candyEarned - spentCandy(pets)
+```
+
+- **`addCandy(save, n)`** (src/game/pets.js) changes both.
+- **`buyPet` and `feedPet`** only lower `candy`. Spending is derived from the
+  pet levels owned. A pet's price and every feed count; the Snow Puppy has no
+  price, only its feeding.
+- **Old saves** have neither field and start on 0. `syncCandyLedger` keeps the
+  invariant on load.
+- **The advent calendar** spends nothing, and pays like any other reward: main.js
+  puts a door's coins through `ctx.addCoins` and its candy through `ctx.addCandy`,
+  so both ledgers stay right. `openDoor` itself only marks the door. Opening the
+  same door on two devices pays out on each, and the merge keeps the larger
+  lifetime total, so it can't add up to more than one device earned.
+
+After a merge, candy is recomputed from the merged `candyEarned` and the merged
+pets, so buying different pets on two devices can't create candy, and if the
+two together cost more than was earned, `candyEarned` rises to the amount spent
+and candy is 0, never negative.
+
 ## mergeSaves(local, remote) → merged
 
 This is a pure function, and its unit tests live in `test/merge.test.js`.
@@ -89,19 +122,31 @@ This is a pure function, and its unit tests live in `test/merge.test.js`.
    progress, its profile and its wardrobe. A reset on one device beats older
    progress everywhere.
 2. **Same epoch:** merge field by field.
-   - **Counters:** `max` for `coinsEarned`, `totalPresents`, `totalCrackers`,
-     `nights` and `bestPresentsInNight`.
+   - **Counters:** `max` for `coinsEarned`, `candyEarned`, `totalPresents`,
+     `totalCrackers`, `nights` and `bestPresentsInNight`.
    - **`upgrades`:** the highest level for each id, clamped to 0..3.
    - **`foundJokes`:** local order first, then any remote ids that are missing, as
      strings with no duplicates.
    - **`unlocked`:** the union of both lists.
    - **`wardrobe`:** the local value where local has the key, otherwise the remote value.
    - **`profile`:** whichever has the newer `setAt`; a missing profile loses.
+   - **`pets`:** the highest level for each id.
+   - **`foundBaubles`:** local order first, then any remote ids that are
+     missing, like `foundJokes`.
+   - **`tree` and `treeSetAt`:** the whole tree with the newer `treeSetAt`, even
+     an empty one, so taking baubles off sticks. On a tie the remote one wins,
+     so devices agree. Each change stamps a time strictly above the last, so a
+     device with a slow clock still wins with its newer change.
+   - **`advent`:** in the same year, the union of `opened`, in door order;
+     otherwise the newer year wins.
 3. **Always:**
    - `settings` comes from local.
    - `coins` is set to `max(0, coinsEarned - spentOnUpgrades(upgrades))`, and
-     `coinsEarned` is raised to the amount spent if it fell below it.
+     `coinsEarned` is raised to the amount spent if it fell below it. `candy`
+     and `candyEarned` work the same way with `spentCandy(pets)`.
    - `version` comes from local.
+   - `activePet` comes from local, and becomes `null` if the merged save doesn't
+     own that pet (a reset on another device, say).
 4. Merging must be idempotent, and a merge with an empty or missing remote
    returns local unchanged.
 
@@ -128,6 +173,13 @@ This is a pure function, and its unit tests live in `test/merge.test.js`.
   `updatedAt == request.time`.
 - `save` is checked against the CloudSave shape above: allowed keys only, ints in
   sane ranges, and the list and map size caps.
+- The eleven original keys are required. The six added with candy, pets, baubles
+  and the calendar are optional, because older versions of the game are still
+  cached on devices and write saves without them. Each one is checked when it's
+  there. Such a write drops those keys from the cloud copy until a newer version
+  pushes again, which puts them back from that device's own save.
+- **Release order:** deploy the rules first, then the web build. The older
+  deployed rules refuse every save with the new keys.
 
 **`leaderboard/{uid}`**
 - **Read:** any signed-in user. A list query's `limit` must be 50 or fewer if

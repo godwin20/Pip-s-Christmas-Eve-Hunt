@@ -18,6 +18,8 @@ import {
   makeSleigh,
   makeLollipopTree,
   makeForestInstances,
+  makePipTree,
+  makeTreeSign,
   makeRockGeometry,
   makeGumdropGeometry,
   makeSnowLumpGeometry,
@@ -36,6 +38,9 @@ const RING_R = 11;
 const GRID_SIZE = 172; // terrain covers [-86, 86]^2
 const GRID_SEGS = 144;
 const SPOT_MAX_R = 64; // collectables stay on dry land
+// Pip's Tree stands in the square, off to one side of the sleigh, so the spawn
+// camera (behind Pip on the +Z side) still looks straight down the middle.
+const PIP_TREE = { angleMin: 0.72, angleMax: 1.5, radiusMin: 5.8, radiusMax: 7, passage: 1.5, keepClear: 1.6 };
 const TAU = Math.PI * 2;
 
 const THEMES = {
@@ -691,12 +696,14 @@ export function generateMap(rng, opts = {}) {
   const nearColl = (x, z, extra) => colliders.some((c) => Math.hypot(c.x - x, c.z - z) < c.r + extra);
 
   // standalone pines framing each house
+  const pines = [];
   for (const hs of houseSpots) {
     for (const sx of [-1, 1]) {
       if (!rS.chance(0.75)) continue;
       const w = toWorld(hs.x, hs.z, hs.yaw, sx * rS.range(5.2, 6.4), rS.range(-3.5, -0.5));
       if (distToPaths(w.x, w.z) < 2.6 || nearPond(w.x, w.z, 3) || nearColl(w.x, w.z, 1.2)) continue;
       const pine = place(makePineTree(rP, { theme }), w.x, w.z, rS.range(0, TAU), 0.05);
+      pines.push(pine);
       addCollider(w.x, w.z, pine.userData.radius);
     }
   }
@@ -1423,6 +1430,46 @@ export function generateMap(rng, opts = {}) {
   const crackerSpots = spots.slice(0, crackerCount).map((s) => ({ x: s.x, z: s.z, tucked: s.tucked }));
   const presentSpots = spots.slice(crackerCount, crackerCount + presentCount).map((s) => ({ x: s.x, z: s.z, tucked: s.tucked }));
 
+  // ---------------- Pip's Tree ----------------
+  // Last of all and from its own stream, so every map keeps the layout it
+  // always had: its colliders join the list after the grid was built, which is
+  // what resolveCollision and clearanceAt expect of late additions.
+  const rPip = fork('pipTree');
+  const pipTreeObj = makePipTree(rPip, { theme });
+  const pipR = pipTreeObj.userData.radius;
+  const pipSpotFree = (x, z, passage) => {
+    if (clearanceAt(x, z, 4) < pipR + passage) return false;
+    if (distToPaths(x, z) < 2.6) return false;
+    const taken = (s) => Math.hypot(s.x - x, s.z - z) < pipR + PIP_TREE.keepClear;
+    return !crackerSpots.some(taken) && !presentSpots.some(taken);
+  };
+  const pipSpot = (() => {
+    const side = rPip.chance(0.5) ? 1 : -1;
+    const start = rPip.next();
+    // the side the dice picked first, then the other, then a tighter squeeze
+    for (const passage of [PIP_TREE.passage, 1.1, 0.7]) {
+      for (const s of [side, -side]) {
+        for (let i = 0; i < 12; i++) {
+          const a = PIP_TREE.angleMin + (((start + i * 0.618) % 1) * (PIP_TREE.angleMax - PIP_TREE.angleMin));
+          for (const r of [PIP_TREE.radiusMin, (PIP_TREE.radiusMin + PIP_TREE.radiusMax) / 2, PIP_TREE.radiusMax]) {
+            const x = Math.sin(a * s) * r;
+            const z = Math.cos(a * s) * r;
+            if (pipSpotFree(x, z, passage)) return { x, z };
+          }
+        }
+      }
+    }
+    return { x: side * 5, z: 4 };
+  })();
+  // it faces the spawn, so its baubles and sign greet Pip
+  const pipYaw = yawToward(pipSpot.x, pipSpot.z, spawn.x, spawn.z);
+  place(pipTreeObj, pipSpot.x, pipSpot.z, pipYaw, 0.02);
+  addCollider(pipSpot.x, pipSpot.z, pipR);
+  const pipSign = makeTreeSign();
+  const signAt = toWorld(pipSpot.x, pipSpot.z, pipYaw, -1.15, 2.05);
+  place(pipSign, signAt.x, signAt.z, yawToward(signAt.x, signAt.z, spawn.x, spawn.z), 0.02);
+  addCollider(signAt.x, signAt.z, pipSign.userData.radius);
+
   const freeRng = fork('free');
   const randomFreeSpot = (r2, minDistFromSpawn = 12) => {
     const R = r2 && typeof r2.next === 'function' ? r2 : freeRng;
@@ -1542,6 +1589,9 @@ export function generateMap(rng, opts = {}) {
     lamps,
     snowmen,
     lollipops,
+    pines, // the standalone pines; the rest are instances under `forest`
+    forest,
+    pipTree: pipTreeObj,
     fences,
     ponds: ponds.map((p) => ({ x: p.x, z: p.z, r: p.r, y: p.y })),
     hills: hills.map((h) => ({ x: h.x, z: h.z })),

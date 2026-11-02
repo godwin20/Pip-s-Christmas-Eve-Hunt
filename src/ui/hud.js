@@ -306,10 +306,15 @@ export function createHud(root) {
 
   // top-left: coins + counts
   const tl = h('div', 'hud-tl', layer);
-  const coinsPill = h('div', 'hud-pill hud-coins', tl);
+  const wallet = h('div', 'hud-wallet', tl);
+  const coinsPill = h('div', 'hud-pill hud-coins', wallet);
   const coinIcon = h('span', 'hud-coin', coinsPill);
   const coinsNum = h('span', 'hud-num', coinsPill, '0');
   coinsPill.setAttribute('title', 'Coins');
+  const candyPill = h('div', 'hud-pill hud-candy', wallet);
+  const candyIcon = h('span', 'hud-sweet', candyPill);
+  const candyNum = h('span', 'hud-num', candyPill, '0');
+  candyPill.setAttribute('title', 'Candy');
 
   const counts = h('div', 'hud-counts', tl);
   const crackerPill = h('div', 'hud-pill hud-count is-zero', counts);
@@ -499,6 +504,20 @@ export function createHud(root) {
     if (!coinTweening) {
       coinTweening = true;
       raf(coinStep);
+    }
+  }
+
+  // ---------- candy ----------
+  let candyShown = null;
+  function setCandy(n) {
+    const v = Math.max(0, Math.round(Number(n) || 0));
+    if (v === candyShown) return;
+    const rose = candyShown !== null && v > candyShown && visible;
+    candyShown = v;
+    candyNum.textContent = fmtNum(v);
+    if (rose) {
+      bump(candyIcon, 'is-bump', 650);
+      bump(candyNum, 'is-bump', 500);
     }
   }
 
@@ -924,6 +943,7 @@ export function createHud(root) {
     lastT = 0;
     countState.crackers = countState.presents = null;
     coinTarget = null;
+    candyShown = null;
     releaseSlide();
   }
 
@@ -948,6 +968,7 @@ export function createHud(root) {
     hide,
     setTime,
     setCoins,
+    setCandy,
     setCounts,
     setPrompt,
     toast,

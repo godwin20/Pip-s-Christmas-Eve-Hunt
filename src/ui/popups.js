@@ -491,7 +491,13 @@ export function createPopups(root, sfx) {
     const node = h('div', 'pp-banner ' + (good ? 'pp-banner--good' : 'pp-banner--bad'), layer);
     node.setAttribute('role', 'status');
     if (def.id) node.dataset.surprise = String(def.id);
-    h('div', 'pp-banner-icon', node, def.icon || '🎁');
+    const icon = h('div', 'pp-banner-icon', node, def.colours ? '' : def.icon || '🎁');
+    if (def.colours) {
+      // a bauble: the design that was really found, not a stand-in
+      const ball = h('span', 'pp-bauble', icon);
+      ball.style.setProperty('--a', def.colours[0]);
+      ball.style.setProperty('--b', def.colours[1]);
+    }
     const text = h('div', 'pp-banner-text', node);
     h('div', 'pp-banner-kicker', text, good ? pick(GOOD_KICKERS) : pick(BAD_KICKERS));
     h('div', 'pp-banner-name', text, def.name || 'Surprise!');

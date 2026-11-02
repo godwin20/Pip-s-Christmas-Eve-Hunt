@@ -36,12 +36,16 @@ Kid-friendly humour everywhere.
 ## Already written (read, reuse, do not rewrite)
 - `src/core/rng.js` — `createRng(seed)` → `{ seed, next, range, int, chance, pick, weighted(entries), shuffle, fork(salt) }`, `randomSeed()`, `hashString()`.
 - `src/core/save.js` — `loadSave()`, `writeSave(save)`, `resetSave()`, `defaultSave()`.
-  Save shape: `{ version, coins, totalPresents, totalCrackers, nights, bestPresentsInNight, upgrades:{id:lvl}, foundJokes:[ids], unlocked:[milestoneIds], wardrobe:{milestoneId:bool}, settings:{sfx, music, voice} }`.
+  Save shape: `{ version, coins, coinsEarned, candy, candyEarned, epoch, profile, totalPresents, totalCrackers, nights, bestPresentsInNight, upgrades:{id:lvl}, foundJokes:[ids], unlocked:[milestoneIds], wardrobe:{milestoneId:bool}, pets:{petId:level 1..5}, activePet, foundBaubles:[ids], tree:{slot:baubleId}, treeSetAt, advent:{year, opened:[doors]}|null, settings:{sfx, music, voice} }`. `syncCoinLedger(save)` and `syncCandyLedger(save)` keep `coins` and `candy` true to their ledgers (docs/CLOUD.md).
 - `src/game/upgrades.js` — `UPGRADES`, `MAX_LEVEL`, `getUpgrade`, `upgradeLevel(save,id)`, `nextCost(save,id)`, `buyUpgrade(save,id)`, `computeStats(save)`.
-  Stats: `{ radarRange, radarShowCrackers, radarPingSeconds, radarRarity, compassLevel, speedMult, iceGrip, nightSeconds, luck, magnetRadius, extraPresents, jokeLuck }`.
+  Stats: `{ radarRange, radarShowCrackers, radarPingSeconds, radarRarity, compassLevel, speedMult, iceGrip, nightSeconds, luck, magnetRadius, extraPresents, jokeLuck, sniffMult, giftSeconds, giftCoins }`. The pets reach the game here: `speedMult` includes the Baby Reindeer, and the last three come from `petPerks(save)`.
 - `src/game/milestones.js` — `MILESTONES` (`{id, count, icon, name, desc, cosmetic}`), `getMilestone`, `isUnlocked`, `isActive(save,id)`, `checkMilestones(save)`, `nextMilestone(save)`.
   Ids: `scarf`(10) `puppy`(25) `candyTheme`(50) `trail`(75) `goldenPresent`(100) `partySky`(150) `jumper`(200).
 - `src/game/crackers.js` — `RARITY_COINS`, `rollRarity(rng, jokeLuck)`, `pickJoke(rng, rarity, foundIds)` → `{joke, isNew}`, `getJoke(id)`.
+- `src/game/pets.js` — tuning in `PET_TUNING`. `PETS` (`{id, name, icon, price, blurb}`; ids `puppy` `kitten` `reindeer` `penguin`; the puppy's `price` is null), `MAX_PET_LEVEL`, `PET_NOTE`, `getPet`, `petLevel(save,id)` (0 = not owned), `feedCost(save,id)` (null when not owned or level 5), `spentCandy(pets)`, `addCandy(save,n)`, `buyPet(save,id)`, `feedPet(save,id)`, `meetPuppy(save)` (call the first time the puppy joins), `activePetId(save)` (read this, not `save.activePet`), `setActivePet(save,id|null)`, `petPerks(save)` → `{ sniffMult, giftSeconds, giftCoins, speedMult, caneBonus }` (the three new pets only count while they come along), `rollCaneCandy(rng,save)`, `perkText(id,level)`.
+- `src/game/baubles.js` — tuning in `BAUBLE_TUNING`. `BAUBLES` (`{id, name, colours:[main, accent], pattern, rarity}`), `BAUBLE_PATTERNS`, `GOLDEN_STAR_ID`, `TREE_DROP_BAUBLES` (23, no Golden Star), `TREE_SLOTS` (`s0`..`s11`), `TREE_ROWS` (`[5, 4, 2, 1]`: s0..s4 along the bottom left to right, up to s11 at the top; Pip's Tree and the Wardrobe both lay the spots out from it), `getBauble`, `newShakeTally()` (one per night, in `ctx.run`), `rollShake(tally,rng)` → bool, `pickBauble(rng,foundIds)`, `collectBauble(save,id)` → `{isNew, coins}` (the caller pays `coins` through `ctx.addCoins`), `foundCount(save)`, `slotOf(save,id)`, `placeBauble(save,slot,id,now?)`, `removeBauble(save,slot,now?)`, `treeSpots(save)` → `[{slot, bauble|null}]`.
+- `src/game/advent.js` — tuning in `ADVENT_TUNING`; `now` is always a parameter, read in local time. `DOOR_LAYOUT`, `CHOCOLATES` (`{day, name, shape, colours, note?}`), `CHOCOLATE_SHAPES`, `getChocolate(day)`, `isAdventTime(now)`, `parseDebugDate('2026-12-07')`, `openedDoors(save,now)`, `doorState(save,day,now)` → `'opened'|'ready'|'locked'`, `readyDoors(save,now)`, `lockedDoorText(day)`, `doorReward(day)` → `{coins, candy, bauble}`, `openDoor(save,day,now)` → `{day, chocolate, coins, candy, bauble}` or null (it pays nothing: the caller uses `ctx.addCoins`, `addCandy` and `collectBauble`), `cleanAdvent(v)`.
+- `src/core/motion.js` — `prefersCalm()`: true when the player asked for reduced motion. The world modules that move for fun read it once and do less.
 - `src/world/materials.js`, `src/styles.css` (CSS variables — use them), `index.html`.
 
 DOM roots in `index.html`: `#game` (canvas), `#hud`, `#popups`, `#screens`
@@ -61,15 +65,21 @@ ctx = {
   rng,                       // night rng (seeded)
   seed,
   time,                      // game seconds since night start (stops while paused/modal)
-  world, player, collectables, effects, companions, sky, hud, popups, sfx,
+  world, player, collectables, canes, shakes, effects, companions, sky, hud, popups, sfx,
   run: {
     timeLeft, coinsEarned, crackers, presents,
     newJokes: [],            // joke objects found for the first time tonight
     surprises: {},           // surpriseId -> count
     speedBoostUntil: 0,      // ctx.time until which speed x2 (reindeer)
     revealUntil: 0,          // ctx.time until which radar shows everything
+    // from newTreatRun(ctx), game/treats.js:
+    candyEarned, canes,      // tonight's candy and canes cracked
+    newBaubles: [],          // bauble designs found for the first time tonight
+    shakeTally, treatRng,    // tonight's shakes, and the stream its rolls come from
+    nextGiftAt,              // ctx.time of the Frost Kitten's next coins
   },
   addCoins(n, worldPos?),    // adds to save.coins + run.coinsEarned, float text, coin sfx; n may be negative
+  addCandy(n, worldPos?),    // adds to both sides of the candy ledger + run.candyEarned, HUD, float text
   addTime(seconds),          // adds to run.timeLeft
   toast(text, icon?),        // small HUD message
 }
@@ -90,7 +100,7 @@ ctx = {
 ### `src/core/audio.js`
 `export const sfx = { unlock(), play(name), setEnabled(bool), setMusicEnabled(bool), startMusic(), stopMusic(), speak(text) }`
 - Pure WebAudio synthesis (no files). AudioContext created lazily in `unlock()` (called on first user gesture); `play` before unlock is a silent no-op. Never throw.
-- Names: `bang` (cracker), `pop` (bow pop), `boing` (jack-in-box), `blip` (radar ping), `coin`, `jingle` (sleigh bells sparkle), `sadTrombone` (wah-wah-waaah), `hoho` (deep 3-note), `bark` (tiny yip), `whoosh`, `click` (UI), `buy` (cash register-ish chime), `error` (soft buzz), `unlock` (fanfare), `disco` (a ~10 s funky synth loop, auto-stops), `footstep` (soft snow crunch, quiet), `slide` (swoosh), `snowball` (thud), `tick` (clock tick for last 10 s).
+- Names: `bang` (cracker), `pop` (bow pop), `boing` (jack-in-box), `blip` (radar ping), `coin`, `jingle` (sleigh bells sparkle), `sadTrombone` (wah-wah-waaah), `hoho` (deep 3-note), `bark` (tiny yip), `whoosh`, `click` (UI), `buy` (cash register-ish chime), `error` (soft buzz), `unlock` (fanfare), `disco` (a ~10 s funky synth loop, auto-stops), `footstep` (soft snow crunch, quiet), `slide` (swoosh), `snowball` (thud), `tick` (clock tick for last 10 s), `crack` (candy cane snapping, sugar tinkle), `shake` (branches, then snow flumping down), `bauble` (rising glass chime), `meow` (Frost Kitten), `bleat` (Baby Reindeer), `cheep` (Penguin Chick).
 - Music: gentle original looping lullaby-style Christmas melody (or public-domain "Jingle Bells"/"Deck the Halls" tune) with soft bells, low volume.
 - `speak(text)`: speechSynthesis with a silly voice (pitch ~1.6, rate ~0.95); no-op if unsupported or voice setting off (main calls `setVoiceEnabled` too — also export `setVoiceEnabled(bool)` on `sfx`).
 
@@ -133,8 +143,8 @@ Use `KeyboardEvent.code` (`'KeyW'`, `'Space'`, `'KeyE'`, `'Tab'`, `'Escape'`, `'
 
 ### `src/world/props.js`
 Factory functions returning `THREE.Group`s built facing +Z, base at y=0, each with `userData.radius` (collision circle):
-`makePineTree(rng, {theme})`, `makeDecoratedTree(rng, {theme})` (big Christmas tree with baubles, garland, star; exposes `userData.lights: Mesh[]` of bulb meshes with their own unique emissive materials so disco mode can recolour them), `makeSnowman(rng)`, `makeCandyLamp(rng)` (candy-cane striped lamp post with warm glowing lamp + additive glow sprite), `makeGingerHouse(rng, {theme})` (gingerbread house with icing roof, gumdrops, glowing windows, door facing +Z), `makeFence(length)`, `makeSleigh()` (Santa's red sleigh with gold trim and a sack of presents), `makeRock(rng)`, `makeLollipopTree(rng)` (candy theme).
-Also `export function makeForestInstances(points, rng, {theme})` → `THREE.Group` containing InstancedMeshes for many simple pine trees at `points [{x, z, y, scale, rot}]`.
+`makePineTree(rng, {theme})`, `makeDecoratedTree(rng, {theme})` (big Christmas tree with baubles, garland, star; exposes `userData.lights: Mesh[]` of bulb meshes with their own unique emissive materials so disco mode can recolour them), `makeSnowman(rng)`, `makeCandyLamp(rng)` (candy-cane striped lamp post with warm glowing lamp + additive glow sprite), `makeGingerHouse(rng, {theme})` (gingerbread house with icing roof, gumdrops, glowing windows, door facing +Z), `makeFence(length)`, `makeSleigh()` (Santa's red sleigh with gold trim and a sack of presents), `makeRock(rng)`, `makeLollipopTree(rng)` (candy theme), `makePipTree(rng, {theme})` (a pine in a tub, named `pineTree` so the camera treats it like one; `userData.spots` are the 12 bauble spots in `TREE_SLOTS` order, and `userData.setBaubles(colours)` takes 12 CSS colours or nulls and hangs one glossy instanced sphere per colour), `makeTreeSign()` (the wooden "Pip's Tree" sign; its canvas texture lasts the session).
+Also `export function makeForestInstances(points, rng, {theme})` → `THREE.Group` containing InstancedMeshes for many simple pine trees at `points [{x, z, y, scale, rot}]`, and `makeSmallCaneGeometry()` (the breakable cane in its heap of snow, one geometry for one InstancedMesh).
 
 ### `src/world/mapgen.js`
 `export function generateMap(rng, { theme = 'classic' | 'candy', crackerCount = 15, presentCount = 10 })` → `world`:
@@ -147,7 +157,9 @@ Also `export function makeForestInstances(points, rng, {theme})` → `THREE.Grou
   decoratedTrees: [Group], houses: [Group],
   crackerSpots: [{ x, z }], presentSpots: [{ x, z }],
   randomFreeSpot(rng, minDistFromSpawn = 12) /* {x,z} not inside colliders */,
-  update(dt, time) /* chimney smoke, lamp flicker, etc. */ }
+  update(dt, time) /* chimney smoke, lamp flicker, etc. */,
+  pines /* the standalone pine Groups */, forest /* Group of InstancedMeshes */, lollipops,
+  pipTree /* Group from makePipTree */ }
 ```
 - Terrain: value-noise heightmap from rng (gentle hills, flatter village area near origin, beach falling to a frozen sea ring beyond r≈75 out to ~140 so the edge looks nice). Snow vertex colours with subtle blue shading. `receiveShadow`.
 - Village square (radius ~14 around origin): sleigh at origin, 6–8 decorated trees and candy lamps in a ring, 2–4 gingerbread houses just outside, fences.
@@ -156,6 +168,7 @@ Also `export function makeForestInstances(points, rng, {theme})` → `THREE.Grou
 - `crackerSpots` / `presentSpots`: exactly the requested counts, distance ≥ 12 from spawn, spaced ≥ 6 apart, not inside colliders; ~30 % deliberately tucked behind houses / beside trees.
 - Candy theme: pink-tinted snow, candy-stripe pines + lollipop trees, pastel houses.
 - Everything depends **only** on the rng → same seed = same map.
+- **Pip's Tree** goes in last, from its own `pipTree` stream, with the sign beside it. It stands at about 5.8 m from the sleigh, to one side of the line from spawn to sleigh, facing spawn, clear of paths and item spots. Its colliders join the list after the grid is built, like other late additions, so every other spot, collider and path of a seed stays what it always was.
 
 ### `src/world/sky.js`
 `export function createSky(scene)` → `{ update(dt, time, focus /*Vector3*/), setParty(bool), setTheme('classic'|'candy'), dispose() }`
@@ -189,6 +202,28 @@ Also `export function makeForestInstances(points, rng, {theme})` → `THREE.Grou
 ```
 Snowfall is always on (Points around the camera, gentle drifting). Pooled particles, no per-frame allocations.
 
+### `src/world/canes.js`
+`export function createCanes(scene, world, rng, { count = 12 } = {})` →
+```
+{ list /* [{ id, x, y, z, alive, position, ... }] */, root, aliveCount,
+  nearest(pos, maxDist) /* whole cane or null */, smash(cane) /* fresh Vector3 or null */,
+  update(dt, time, playerPos|null), dispose() }
+```
+Also `pickCaneSpots(world, rng, count)` and `CANE_TUNING`. Presentation only: small breakable canes on dry reachable land, at least 16 m from spawn and 3.2 m from items, from their own `canes` stream. No colliders. One InstancedMesh, one Points glint, and an InstancedMesh of sugar shards hidden until something shatters. They wiggle only within 4.5 m of Pip, so a quiet frame writes nothing.
+
+### `src/world/shakes.js`
+`export function createShakes(scene, world, effects)` →
+```
+{ trees /* [{ x, y, z, r, top, shaken, group|null, mesh|null, index }] */, drops,
+  nearest(pos, maxDist) /* tree not shaken tonight, or null */, shake(tree, from) /* bool */,
+  dropBauble(tree, bauble, towards) /* drop */, touching(pos, reach) /* settled drop or null */,
+  take(drop) /* Vector3 or null */, groundIds(), update(dt, time), dispose() }
+```
+Also `collectTrees(world)`. Presentation only. Standalone pines, lollipop trees and every forest instance count; decorated trees and Pip's Tree don't. A forest pine wobbles by rewriting its instance matrix only while it wobbles, then gets its exact matrix back. A bauble falls on Pip's side of the tree, a step to one side of him, bounces and sits glittering; only then can it be touched. `update` also runs behind the menus, so a wobble caught by the end of the night finishes.
+
+### `src/game/treats.js`
+Game rules for the above, like `surprises.js`: every reward is handed out here through `ctx`. `TREAT_TUNING`, `newTreatRun(ctx)` (the treat fields of `ctx.run`), `breakCane(ctx, cane)` → candy, `shakeTree(ctx, tree)` → drop or null, `bonkTree(ctx)` (main.js calls it from `player.onBonk`), `collectDrop(ctx, drop)`, `updateTreatPrompt(ctx, pressed)` (main.js's interaction order: collectables, the sleigh, then this: canes, then trees), `updateTreats(ctx)` (once per playing frame: sliding through canes, touching baubles, the Frost Kitten's coins).
+
 ### `src/game/surprises.js`
 `export const SURPRISES = [{ id, name, icon, desc, weight, good }]` and
 `export function rollSurprise(rng, stats)` → surprise def, and
@@ -201,10 +236,12 @@ Every surprise: `ctx.popups.showSurprise(def, detailText)` banner, sfx, and incr
 ### `src/world/companions.js`
 `export function createCompanions(scene, ctx)` →
 ```
-{ hasPuppy, spawnPuppy(), jackInBox(pos), reindeerRide(seconds), snowballStorm(seconds, onNear /* called per snowball within 3 m of player */),
+{ hasPuppy, spawnPuppy(), petId, spawnPet(id, level), removePet(), cheerPet(id?) /* Vector3 or null */,
+  snowPuff(x, y, z, n, size, spread), jackInBox(pos), reindeerRide(seconds), snowballStorm(seconds, onNear /* called per snowball within 3 m of player */),
   coalBuddy(pos), discoTree(tree, seconds), gremlin(pos, onCaught, onEscaped), santaFlyover(onDrop),
   update(dt, time), clear() }
 ```
+- Pets (`kitten`, `reindeer`, `penguin`): one at a time, spawned by main.js at night start from `activePetId(save)`. They share `followPip()` with the puppy, on Pip's other side, with their own low-poly model, gait, speech bubble and sound. `cheerPet(id)` is a happy hop when game code has good news (the id must match the pet that came along). Level 5 adds a gold bow, the puppy's too. Sniffing reaches 12 m × `stats.sniffMult`. Perks are game rules, in stats and `treats.js`, never here.
 - Snow puppy: tiny white snow-dog (round body, floppy ears, red collar with bell, wagging tail) that follows behind Pip and hops. When an alive collectable is within 12 m it hasn't barked about yet: `ctx.sfx.play('bark')`, `ctx.toast('Woof! Something nearby!', '🐶')` and it points toward it for a moment.
 - Jack-in-the-box: box + spring + clown head that boings up with springy oscillation, then shrinks away after ~2.5 s.
 - Reindeer: cute reindeer with red nose that appears under Pip (`ctx.player.setRiding(true)`) and follows Pip's position/facing for the duration, legs galloping; `setRiding(false)` at the end with a puff.
@@ -218,13 +255,13 @@ Every surprise: `ctx.popups.showSurprise(def, detailText)` banner, sfx, and incr
 ### `src/ui/hud.js` (+ `src/ui/hud.css`, imported by hud.js)
 `export function createHud(root)` →
 ```
-{ show(), hide(), setTime(seconds), setCoins(n), setCounts({ crackers, presents }),
+{ show(), hide(), setTime(seconds), setCoins(n), setCandy(n), setCounts({ crackers, presents }),
   setPrompt(text | null), toast(text, icon), setBuffs([{ icon, label, remaining }]),
   setCompass(angle | null, distance | null) /* angle radians relative to screen-up; null hides */,
   setSeed(seed), flashTime() /* pulse when time added */,
   radarCanvas /* <canvas> 200x200 css px (hi-dpi aware) bottom-right */ }
 ```
-Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins top-left (bouncing coin icon on change), counts top-left under coins, buffs row under the timer, prompt bottom-centre ("Press E to pull the cracker!"), toasts stacked top-right, compass star arrow just under the timer, small control hints bottom-left.
+Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins top-left (bouncing coin icon on change) with candy beside them (below them on narrow screens), counts top-left under coins, buffs row under the timer, prompt bottom-centre ("Press E to pull the cracker!"), toasts stacked top-right, compass star arrow just under the timer, small control hints bottom-left.
 
 ### `src/ui/radar.js`
 `export function createRadar(canvas)` → `{ update(dt, { playerPos, yaw, items, stats, revealAll, time }) }`
@@ -234,7 +271,7 @@ Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins t
 ### `src/ui/popups.js` (styles in `src/ui/hud.css` or its own `popups.css`)
 `export function createPopups(root, sfx)` →
 ```
-{ showJoke(joke, { isNew, coins }) /* Promise, modal */, showSurprise(def, detail) /* non-modal banner ~3 s */,
+{ showJoke(joke, { isNew, coins }) /* Promise, modal */, showSurprise(def, detail) /* non-modal banner ~3 s; def.colours [main, accent] draws a bauble in place of def.icon */,
   showUnlock(milestone) /* Promise, modal */, isModalOpen(), closeModal() }
 ```
 - Joke card: cracker-paper strip slip (torn edges), rarity ribbon ("NEW!" sticker if new, "Already in your gallery!" if not), shows `q`, then "Tap to see the answer!" reveals `a` with a bounce (quotes/secrets show both at once). Buttons: 🔊 Read aloud (`sfx.speak`), "Ha! Next" closes. Keyboard: E / Space / Enter reveals then closes. Legendary gets a rainbow animated border.
@@ -320,14 +357,14 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
 
 ### `src/ui/screens.js` (+ `src/ui/screens.css`, imported by screens.js)
 `export function createScreens(root, deps)` with
-`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), getIslandSeed() /* map number of the last night, or null */, onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged() }` →
+`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), getIslandSeed() /* map number of the last night, or null */, onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged(), getNow() /* today, as a Date: the dev server's ?date= can change it */, onOpenDoor(day) /* opens and pays a calendar door: { day, chocolate, coins, candy, bauble, baubleIsNew } or null */ }` →
 ```
-{ showTitle(), showResults(summary), showShop(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */,
+{ showTitle(), showResults(summary), showShop(), showAdvent(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */,
   refresh(), cloudChanged() /* docs/CLOUD.md */, pwaChanged() /* src/core/pwa.js */ }
 ```
-`summary = { seed, crackers, presents, coinsEarned, newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
-- **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step, and (with a cloud) "⭐ Feedback" on the same bottom line.
-- **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
+`summary = { seed, crackers, presents, coinsEarned, candyEarned, newBaubles: [bauble], newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
+- **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Advent Calendar (December only, with a gold dot while a door is ready) / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step, and (with a cloud) "⭐ Feedback" on the same bottom line.
+- **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, a line for tonight's candy and new baubles (when there are any), seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
 - **Privacy** (docs/CLOUD.md, "Privacy note screen"): the plain-words list
   from `PRIVACY_FACTS` in `src/ui/privacy-text.js` (which `public/privacy.html`
   repeats word for word), "📄 Read the full privacy policy" (`privacy.html`,
@@ -338,8 +375,9 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
   deleting".
 - **Grown-ups gate** (docs/CLOUD.md, "Grown-ups gate for Google sign-in"; pure parts in `src/ui/age-gate.js`): every "Sign in with Google" (title strip, account card) and the feedback card's note first ask a neutral "When were you born?": a month and a year select, both starting blank, one Continue and a ✕, with nothing saying what age is needed. 18 or over (`GATE_MIN_AGE`, the birthday counted from the 1st of the month after) passes: sign-in shows "Continue to Google", whose click calls `cloud.linkGoogle()` synchronously, and the note field opens; a pass holds for 10 minutes in the tab (sessionStorage). Younger shows only "Ask a grown-up to help you with this one." and holds for 24 hours on the device (localStorage `pips-hunt-gate-not-now`), so Esc, closing, reopening and a reload show the message instead of the question. The month and year are never stored or sent.
 - **Feedback card** (docs/CLOUD.md, "Feedback"): an in-page card over the title or results, never during a night: 1–5 stars, one topic, up to 3 quick-note chips, and a note only behind the grown-ups gate. It calls `cloud.sendFeedback(payload)` with `{ rating, category, quick, comment, islandSeed }`; a success shows a thank-you toast, and the Feedback links say "Thanks! You can send more after your next night" until a night ends. The lists are `FEEDBACK_CATEGORIES` and `FEEDBACK_QUICK` in `src/cloud/feedback.js`.
-- **Shop (Santa's Workshop)**: tabs **Upgrades**, **Rewards**, **Wardrobe**. Coins shown. Upgrade cards: icon, name, blurb, level pips (●●○), next level text, Buy button with cost (disabled if poor/maxed; `buyUpgrade` from upgrades.js, then `persist()`, `sfx.play('buy')` or `'error'`). Rewards tab: present milestone track — progress bar of `save.totalPresents` with milestone stops (icon, count, name, locked/unlocked). Wardrobe: toggles for unlocked cosmetic milestones (`save.wardrobe[id]`). Buttons: Start Night, Gallery, Title.
+- **Shop (Santa's Workshop)**: tabs **Upgrades**, **Rewards**, **Pets**, **Wardrobe**. Coins shown (candy on the Pets tab). Upgrade cards: icon, name, blurb, level pips (●●○), next level text, Buy button with cost (disabled if poor/maxed; `buyUpgrade` from upgrades.js, then `persist()`, `sfx.play('buy')` or `'error'`). Rewards tab: present milestone track — progress bar of `save.totalPresents` with milestone stops (icon, count, name, locked/unlocked). Pets tab: upgrade cards, one per pet (`PETS`), with friendship pips, the perk now and what feeding leads to (`perkText`), Buy or Feed (`buyPet`, `feedPet`), and a Bring along switch for the three new pets (`setActivePet`, one at a time; a first pet comes along by itself). The Snow Puppy has no Buy button or switch: its card says how it joins, and it can be fed once met. `PET_NOTE` closes the tab. Wardrobe: toggles for unlocked cosmetic milestones (`save.wardrobe[id]`), then **Your Christmas Tree**: an inline SVG tree with the 12 spots laid over it as real buttons (from `TREE_ROWS`), a shelf of all 24 designs ("?" until found), a "7 / 24 found" counter and a `role="status"` line saying each step. Tap a spot then a bauble, or a bauble then a spot; tap a hung bauble to take it off (`placeBauble`, `removeBauble`). A jump button at the top of the tab leads to it, and on a phone each tap scrolls the tree or the shelf back into view. Buttons: Start Night, Gallery, Title.
+- **Advent Calendar** (`isAdventTime(now)` only; Escape = back to the title): 24 real buttons in `DOOR_LAYOUT` order, 6 across (4 on phones). A speech bubble over the doors (`role="status"`) says what happened, and never moves them. A locked door wiggles and says `lockedDoorText(day)`. A ready door glows; a tap calls `deps.onOpenDoor(day)`, and main.js pays through `ctx.addCoins`, `ctx.addCandy` and `collectBauble` so the ledgers stay right. An opened door shows its chocolate (inline SVG from `CHOCOLATES`) and says its name again when tapped. Focus starts on the lowest ready door. `refresh()` and coming back to the tab (`visibilitychange`, as a game left open can see the date change) update the doors in place, and the title's button and dot too.
 - **Gallery**: scrapbook page; filter chips All / Jokes / Quotes / Secrets(Legendary); counter "42 / 102 found"; grid of cards — found cards show the `q` and flip on click to show `a` (with 🔊 read aloud); unfound show "???" silhouette with a cracker outline and rarity tint. Back button.
 - **Pause**: Resume, Gallery, Sound toggles, Go home (end night early), Quit to title.
-- **Help**: controls and a short cute explanation of crackers, presents, radar, shop.
+- **Help**: controls and a short cute explanation of crackers, presents, radar, shop, candy and pets, and baubles (and, in December only, the calendar).
 - All screens are full-screen overlays with a semi-transparent night backdrop, cosy rounded cards, candy-stripe accents, Fredoka font, buttons with chunky shadows and hover bounce. Keyboard: Escape = back.

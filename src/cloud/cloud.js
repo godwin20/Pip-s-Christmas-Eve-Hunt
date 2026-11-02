@@ -58,13 +58,13 @@ function browserStorage() {
   }
 }
 
-// The same progress, even when another device lists jokes and unlocks in its
-// own order (each device keeps its own order first; see mergeSaves), so two
-// devices taking turns don't rewrite an unchanged save.
+// The same progress, even when another device lists jokes, unlocks and baubles
+// in its own order (each device keeps its own order first; see mergeSaves), so
+// two devices taking turns don't rewrite an unchanged save.
 function sameProgress(a, b) {
   const sorted = (s) => {
     const out = { ...s };
-    for (const key of ['foundJokes', 'unlocked']) if (Array.isArray(out[key])) out[key] = [...out[key]].sort();
+    for (const key of ['foundJokes', 'unlocked', 'foundBaubles']) if (Array.isArray(out[key])) out[key] = [...out[key]].sort();
     return out;
   };
   return sameSave(sorted(a), sorted(b));

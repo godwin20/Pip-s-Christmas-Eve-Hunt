@@ -17,6 +17,10 @@ import { computeStats } from './game/upgrades.js';
 import { checkMilestones, isActive, isUnlocked } from './game/milestones.js';
 import { rollRarity, pickJoke, RARITY_COINS } from './game/crackers.js';
 import { SURPRISES, rollSurprise, applySurprise } from './game/surprises.js';
+import { addCandy, activePetId, meetPuppy, petLevel } from './game/pets.js';
+import { treeSpots, collectBauble } from './game/baubles.js';
+import { openDoor, parseDebugDate } from './game/advent.js';
+import { newTreatRun, updateTreatPrompt, updateTreats, bonkTree } from './game/treats.js';
 import { generateMap } from './world/mapgen.js';
 import { createSky } from './world/sky.js';
 import { createPlayer } from './world/player.js';
@@ -24,6 +28,8 @@ import { createCameraRig } from './world/camera.js';
 import { createCollectables } from './world/collectables.js';
 import { createEffects } from './world/effects.js';
 import { createCompanions } from './world/companions.js';
+import { createCanes } from './world/canes.js';
+import { createShakes } from './world/shakes.js';
 import { createHud } from './ui/hud.js';
 import { createRadar } from './ui/radar.js';
 import { createPopups } from './ui/popups.js';
@@ -37,6 +43,9 @@ import { showGlNote } from './ui/glnote.js';
 // builds, so the debug keys and window.__game are stripped from the live game
 // and ?debug=1 can't be used to pad the leaderboard.
 const DEBUG = import.meta.env.DEV && new URLSearchParams(location.search).has('debug');
+// ?debug=1&date=2026-12-07 makes that day "today" for the advent calendar. Also
+// dev server only: the check on import.meta.env.DEV is what strips it from builds.
+const DEBUG_TODAY = import.meta.env.DEV && DEBUG ? parseDebugDate(new URLSearchParams(location.search).get('date')) : null;
 const INTERACT_RANGE = 2.4;
 const CRACKER_COUNT = 15;
 const BASE_PRESENTS = 10;
@@ -108,6 +117,7 @@ player.onSlideStart = () => sfx.play('slide');
 player.onBonk = () => {
   sfx.play('snowball');
   rig.shake(0.15, 0.25);
+  if (state === 'playing') bonkTree(ctx);
 };
 const hud = createHud(document.getElementById('hud'));
 const radar = createRadar(hud.radarCanvas);
@@ -127,6 +137,8 @@ const ctx = {
   world: null,
   player,
   collectables: null,
+  canes: null,
+  shakes: null,
   effects,
   companions: null,
   sky,
@@ -153,6 +165,16 @@ const ctx = {
       }
     } else {
       effects.floatText(at, `${amount} 🪙`, '#ff6b6b');
+    }
+  },
+  addCandy(n, worldPos) {
+    const amount = addCandy(save, n);
+    if (ctx.run && amount > 0) ctx.run.candyEarned += amount;
+    hud.setCandy(save.candy);
+    if (amount > 0) {
+      const at = worldPos ? worldPos.clone() : player.position.clone();
+      at.y += 1.2;
+      effects.floatText(at, `+${amount} 🍬`, '#ff8fb1');
     }
   },
   addTime(seconds) {
@@ -201,6 +223,8 @@ const screens = createScreens(document.getElementById('screens'), {
   onResume: () => resume(),
   onGoHome: () => endNight(true),
   onQuitToTitle: () => quitToTitle(),
+  getNow: () => today(),
+  onOpenDoor: (day) => openCalendarDoor(day),
   onResetSave: () => {
     const fresh = resetSave();
     // a higher epoch makes this reset win over older copies on other devices;
@@ -214,6 +238,7 @@ const screens = createScreens(document.getElementById('screens'), {
     applySettings();
     applyCosmetics();
     hud.setCoins(save.coins);
+    hud.setCandy(save.candy);
     // the title backdrop must match the fresh save (no candy island, no golden
     // present) instead of waiting for the next night to rebuild it
     if (state !== 'playing' && state !== 'paused') {
@@ -238,6 +263,7 @@ function replaceSave(next) {
   applySettings();
   applyCosmetics();
   hud.setCoins(save.coins);
+  hud.setCandy(save.candy);
   const inNight = state === 'playing' || state === 'paused';
   if (inNight) return; // tonight keeps its map and upgrades; the next night uses the merged save
   ctx.stats = computeStats(save);
@@ -246,6 +272,29 @@ function replaceSave(next) {
     buildWorld(randomSeed(), { populate: true });
   }
   if (screens.current) screens.refresh();
+}
+
+function today() {
+  return DEBUG_TODAY || new Date();
+}
+
+// The calendar's rewards take the same roads as a night's, so both ledgers stay
+// right (docs/CLOUD.md). Hands the screen back what to show, or null if that
+// door can't open today.
+function openCalendarDoor(day) {
+  const door = openDoor(save, day, today());
+  if (!door) return null;
+  ctx.addCoins(door.coins);
+  if (door.candy) ctx.addCandy(door.candy);
+  let baubleIsNew = false;
+  if (door.bauble) {
+    const { isNew, coins } = collectBauble(save, door.bauble);
+    baubleIsNew = isNew;
+    if (coins) ctx.addCoins(coins); // next year's Golden Star is a repeat
+  }
+  writeSave(save);
+  cloud.markDirty();
+  return { ...door, baubleIsNew };
 }
 
 function applySettings() {
@@ -262,15 +311,21 @@ function applyCosmetics() {
   });
   effects.setTrail(isActive(save, 'trail'));
   sky.setParty(isActive(save, 'partySky'));
+  // Pip's Tree in the village wears whatever is on the tree in the save
+  if (ctx.world) ctx.world.pipTree.userData.setBaubles(treeSpots(save).map((spot) => spot.bauble && spot.bauble.colours[0]));
 }
 
 // ---------------------------------------------------------------- world lifecycle
 function disposeWorld() {
   if (ctx.companions) ctx.companions.dispose();
   if (ctx.collectables) ctx.collectables.dispose();
+  if (ctx.canes) ctx.canes.dispose();
+  if (ctx.shakes) ctx.shakes.dispose();
   if (ctx.world) ctx.world.dispose();
   ctx.world = null;
   ctx.collectables = null;
+  ctx.canes = null;
+  ctx.shakes = null;
   ctx.companions = null;
 }
 
@@ -289,6 +344,8 @@ function buildWorld(seed, { populate }) {
   sky.setTheme(theme);
   ctx.world = world;
   ctx.collectables = createCollectables(scene, world, ctx.rng.fork('items'));
+  ctx.canes = createCanes(scene, world, ctx.rng.fork('canes'));
+  ctx.shakes = createShakes(scene, world, effects);
   ctx.companions = createCompanions(scene, ctx);
   if (populate) {
     const rarityRng = ctx.rng.fork('rarity');
@@ -324,15 +381,19 @@ function startNight() {
     surprises: {},
     speedBoostUntil: 0,
     revealUntil: 0,
+    ...newTreatRun(ctx),
   };
   respawnTimer = 0;
   lastTickSecond = -1;
   homeArmedAt = -1;
   rig.snapBehind(player.facing);
-  if (isActive(save, 'puppy')) ctx.companions.spawnPuppy();
+  if (isActive(save, 'puppy')) puppyJoins();
+  const pet = activePetId(save);
+  if (pet) ctx.companions.spawnPet(pet, petLevel(save, pet));
   hud.reset();
   hud.setSeed(ctx.seed);
   hud.setCoins(save.coins);
+  hud.setCandy(save.candy);
   hud.setCounts({ crackers: 0, presents: 0 });
   hud.setTime(ctx.run.timeLeft, ctx.stats.nightSeconds);
   hud.setPrompt(null);
@@ -345,6 +406,13 @@ function startNight() {
   cloud.hold(true); // no cloud writes mid-night; the night is synced when it ends
   canvas.focus();
   ctx.toast('Find crackers 🎉 and presents 🎁 before morning!', '🌙');
+}
+
+// The Wardrobe's reward: the first time the puppy joins this way it becomes a
+// pet you can feed. Being found in a present does the same (surprises.js).
+function puppyJoins() {
+  if (!ctx.companions.hasPuppy) ctx.companions.spawnPuppy();
+  if (meetPuppy(save)) writeSave(save);
 }
 
 // Back to the village square for the menu backdrop, wherever the night left
@@ -379,6 +447,8 @@ function endNight(early) {
     crackers: run.crackers,
     presents: run.presents,
     coinsEarned: run.coinsEarned,
+    candyEarned: run.candyEarned,
+    newBaubles: run.newBaubles,
     newJokes: run.newJokes,
     newUnlocks: run.newUnlocks,
     surprises: run.surprises,
@@ -436,7 +506,7 @@ function onPresentCounted() {
   if (!fresh.length) return Promise.resolve();
   ctx.run.newUnlocks.push(...fresh);
   applyCosmetics();
-  if (isActive(save, 'puppy') && !ctx.companions.hasPuppy) ctx.companions.spawnPuppy();
+  if (isActive(save, 'puppy')) puppyJoins();
   // one after another, and never once the night is over (results celebrate them)
   return fresh.reduce((p, m) => p.then(() => (state === 'playing' ? popups.showUnlock(m) : null)), Promise.resolve());
 }
@@ -543,7 +613,7 @@ function updateInteraction(interactPressed) {
     updateSleighPrompt(interactPressed);
   } else {
     homeArmedAt = -1;
-    hud.setPrompt(null);
+    updateTreatPrompt(ctx, interactPressed); // canes and trees come last
   }
 }
 
@@ -664,11 +734,14 @@ function updatePlaying(dt) {
   });
 
   ctx.collectables.update(dt, ctx.time, player.position);
+  ctx.canes.update(dt, ctx.time, player.position);
+  ctx.shakes.update(dt, ctx.time);
   ctx.companions.update(dt, ctx.time);
   ctx.world.update(dt, ctx.time);
 
   updateInteraction(input.pressed('KeyE') || input.pressed('Enter') || clicked);
   if (state !== 'playing') return; // flew home from the sleigh
+  updateTreats(ctx);
   updateCompass();
   updateBuffs();
   updatePresentRespawn(dt);
@@ -703,6 +776,9 @@ function updateBackdrop(dt, elapsed) {
   camera.lookAt(0, 2, 0);
   if (world) world.update(dt, elapsed);
   if (ctx.collectables) ctx.collectables.update(dt, elapsed, player.position);
+  // a shake or a shatter caught by the end of the night finishes behind the menu
+  if (ctx.canes) ctx.canes.update(dt, elapsed, null);
+  if (ctx.shakes) ctx.shakes.update(dt, elapsed);
   // keep Pip idling in the square
   player.update(dt, {
     move: { x: 0, y: 0 },
@@ -743,7 +819,7 @@ function updateDebug() {
     const inNight = state === 'playing' || state === 'paused';
     if (inNight) {
       ctx.run.newUnlocks.push(...fresh);
-      if (isActive(save, 'puppy') && !ctx.companions.hasPuppy) ctx.companions.spawnPuppy();
+      if (isActive(save, 'puppy')) puppyJoins();
     }
     // cards only over the running night (not over the pause menu or a screen)
     if (state === 'playing') {
@@ -754,9 +830,11 @@ function updateDebug() {
   if (pressed('F8')) {
     save.coins += 500;
     save.coinsEarned += 500;
+    addCandy(save, 200);
     writeSave(save);
     hud.setCoins(save.coins);
-    ctx.toast('Debug: +500 coins', '🛠️');
+    hud.setCandy(save.candy);
+    ctx.toast('Debug: +500 coins, +200 candy', '🛠️');
     refreshMenu();
   }
   if (pressed('F7')) endNight(false); // from playing or paused

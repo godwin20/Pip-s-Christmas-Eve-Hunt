@@ -597,11 +597,18 @@ form, the content rating, the target audience and the privacy policy.
   jokes in the full description and the release notes, and the surprises,
   upgrades and rewards too. Update the Play Console texts and the character
   counts to match, and "102 jokes" in Phase 7 above.
+- **Add new features to the listing, after Google's review.** Once the app is
+  through Google's review, add features that came later (candy and pets, baubles
+  and your tree, the advent calendar) to the feature list in `store/listing.md`
+  and the Play Console, and keep to the character limits. Leave the listing alone
+  while a review is running, so Google checks the text it was given.
 - **A web deploy reaches the app with no Play review,** so nothing else will
   catch this. Whenever you add new content, read it against `content-rating.md`
   and retake the content rating if an answer changes. Whenever you add new
   data, update Data safety (`data-safety.md`) and the privacy pages, and do it
-  before the web deploy goes out.
+  before the web deploy goes out. Set "Last updated" to the release day in
+  `public/privacy.html`, `public/delete-data.html` and `POLICY_UPDATED` in
+  `src/ui/privacy-text.js`.
 
 **Android-side changes need a new bundle:** the name, icon, colours, display
 mode, orientation, minSdkVersion, a newer Bubblewrap template, or a higher

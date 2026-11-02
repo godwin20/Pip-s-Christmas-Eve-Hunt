@@ -3,7 +3,8 @@ rules_version = '2';
 // Cloud saves, the leaderboard and player feedback (docs/CLOUD.md). Anything
 // not allowed below is denied. The caps mirror CLOUD_LIMITS and BOARD_LIMITS in
 // src/cloud/merge.js, the name ranges mirror the word lists in
-// src/cloud/names.js, and the feedback lists mirror src/cloud/feedback.js.
+// src/cloud/names.js, the tree slots mirror TREE_SLOTS in src/game/baubles.js,
+// and the feedback lists mirror src/cloud/feedback.js.
 //
 // These rules stop obvious tampering only: a determined cheater can still post
 // plausible scores, which only server code could check.
@@ -79,13 +80,57 @@ service cloud.firestore {
         s.wardrobe.values().hasOnly([true, false]);
     }
 
+    function petsOk(m) {
+      return m is map && m.size() <= 10 &&
+        idsOk(m.keys()) &&
+        m.values().hasOnly([1, 2, 3, 4, 5]);
+    }
+
+    function foundBaublesOk(l) {
+      return l is list && l.size() <= 24 && idsOk(l);
+    }
+
+    // idsOk also refuses repeats, so a design can only hang once.
+    function treeOk(m) {
+      return m is map && m.size() <= 12 &&
+        m.keys().hasOnly(['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']) &&
+        idsOk(m.values());
+    }
+
+    // null until the first door is opened, like profile until a name is set.
+    function adventOk(a) {
+      return a == null || (
+        a is map &&
+        hasExactly(a, ['year', 'opened']) &&
+        intIn(a.year, 2026, 2100) &&
+        a.opened is list && a.opened.size() <= 24 &&
+        a.opened.toSet().size() == a.opened.size() &&
+        a.opened.hasOnly([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24])
+      );
+    }
+
+    // Older versions of the game are still cached on players' devices, and
+    // they write saves without these keys. Each is checked only when it's there.
+    function extrasOk(s) {
+      return (!('candyEarned' in s) || intIn(s.candyEarned, 0, 1000000000)) &&
+        (!('pets' in s) || petsOk(s.pets)) &&
+        (!('foundBaubles' in s) || foundBaublesOk(s.foundBaubles)) &&
+        (!('tree' in s) || treeOk(s.tree)) &&
+        (!('treeSetAt' in s) || intIn(s.treeSetAt, 0, 10000000000000)) &&
+        (!('advent' in s) || adventOk(s.advent));
+    }
+
     function saveOk(s) {
       return s is map &&
-        hasExactly(s, ['epoch', 'coinsEarned', 'totalPresents', 'totalCrackers', 'nights',
+        s.keys().hasAll(['epoch', 'coinsEarned', 'totalPresents', 'totalCrackers', 'nights',
           'bestPresentsInNight', 'upgrades', 'foundJokes', 'unlocked', 'wardrobe', 'profile']) &&
+        s.keys().hasOnly(['epoch', 'coinsEarned', 'totalPresents', 'totalCrackers', 'nights',
+          'bestPresentsInNight', 'upgrades', 'foundJokes', 'unlocked', 'wardrobe', 'profile',
+          'candyEarned', 'pets', 'foundBaubles', 'tree', 'treeSetAt', 'advent']) &&
         countersOk(s) &&
         collectionsOk(s) &&
-        profileOk(s.profile);
+        profileOk(s.profile) &&
+        extrasOk(s);
     }
 
     function playerOk() {
