@@ -195,6 +195,21 @@ their phone model and Android version with anything they report.
    "Confirm with Google to finish deleting": please do, and say whether the
    Google window opened and the game then said "All deleted".
 
+Once the update is out (section 5), add these. The advent calendar isn't on
+the list, because it stays hidden until 1 December.
+
+9. **Candy:** at a little candy cane in the snow, tap, or belly-slide through
+   it. Does it break and give candy?
+10. **Pets:** Santa's Workshop > Pets. Buy a pet (the first one takes a night
+    or two of candy), Feed it, tap Bring along, then start a night. Does it
+    follow Pip?
+11. **Baubles:** tap by a pine tree or a lollipop tree to shake it. Not every
+    tree drops a bauble, so try a few. Then Santa's Workshop > Wardrobe > Your
+    Christmas Tree: hang it. Does it show on Pip's Tree in the village on the
+    next night?
+12. **Smoothness:** does a night feel as smooth as it did before the update?
+    Please give your phone model if it feels slower.
+
 Good to know: the app and Chrome on the same phone share the game's save. If
 someone played the web version in Chrome before, the app carries on from
 there, and "Delete my saved data" in either clears both.
@@ -212,12 +227,76 @@ there, and "Delete my saved data" in either clears both.
   you changed when you apply for production.
 - Fix things as they come. Web fixes reach testers at once (the game offers
   "Refresh" on its menus); only Android-side changes need a new bundle on the
-  closed track. A new closed-track bundle may need review again, so avoid one
-  during the test unless it's essential, and never send one while another
-  review is running. PrimeTestLab's site says you can keep uploading new
-  versions during the test, but Google's review is the part to watch.
+  closed track.
+- Send one real update during the test (below). A new closed-track bundle may
+  need review again, so never send one while another review is running.
 - Don't remove anyone from the group or the email list, and don't pause the
   track, until production access is approved.
+
+### The mid-test update
+
+Google recommends updating your app in closed testing before releasing to
+production, and asks what you changed when you apply. PrimeTestLab advises at
+least one update too. Its claims that an update improves your chances and
+doesn't reset the 14 days are its own: Google's page doesn't mention either,
+and only says testers must stay opted in.
+
+Make it a real update. The candy, pets, baubles and Wardrobe tree on branch
+`feature/candy-baubles-advent` are one, so a new button colour or a bare
+version bump isn't needed.
+
+**When:** a few days after the 12th tester opts in, about Mon 16 Nov, so testers
+have time to play it. Send the bundle at least 7 days before you apply (Fri 20
+Nov at the latest for a Fri 27 Nov application), because a review can take that
+long. If the test runs late, still get the web release out before 1 December,
+so the calendar is there for its first door.
+
+**Why a web deploy and a bundle:** the game is a website inside an Android
+wrapper. The web deploy brings testers the new features, but Play Console
+doesn't show it as a release. The version 2 bundle puts the update on record,
+and only its version number changes.
+
+1. **Deploy the Firestore rules first.** The live rules refuse every save with
+   the new fields, and the GitHub deploy doesn't publish them:
+
+   ```bash
+   npx firebase deploy --only firestore:rules --project pip-s-christmas-eve-hunt
+   ```
+
+2. **Set "Last updated" to that day** in `public/privacy.html`,
+   `public/delete-data.html` and `POLICY_UPDATED` in `src/ui/privacy-text.js`.
+3. **Merge the branch into `main` and push.** GitHub Pages publishes it.
+4. **Check the live game on your phone:** take the Refresh on the menus, play a
+   night, break a cane, buy a pet and hang a bauble.
+5. **Build version 2 in your own terminal.** `update` raises the version code
+   to 2, and `build` asks for the keystore passwords. Same keystore as before.
+
+   ```bash
+   cd ~/pips-hunt-android
+   npx --yes @bubblewrap/cli@1.27.0 update
+   npx --yes @bubblewrap/cli@1.27.0 build
+   ```
+
+   Copy the updated `twa-manifest.json` to your backups.
+6. **Check it on the internal test first** (`play/README.md`, "Later releases"):
+   no address bar, and the game opens.
+7. **Put the same bundle on the closed test.** **Create new release** on the
+   same track, add it from the app bundle library, and use these release notes
+   (150 / 500):
+
+   ```text
+   Version 2: break candy canes, buy and feed pets, shake trees for baubles and decorate your own Christmas tree. An advent calendar opens on 1 December.
+   ```
+
+   Then **Publishing overview > Send changes for review**. If you're changing
+   the store listing too, do that first, so both go in one review.
+8. **Give testers the extra checks** in section 4, and keep logging what they
+   report.
+
+The advent calendar stays hidden until 1 December, so testers can't reach it
+before you apply. Check it yourself with `npm run dev:cloud` and
+`http://localhost:5174/?debug=1&date=2026-12-07`, and again on your phone on 1
+December.
 
 ## 6. After production access
 
@@ -229,7 +308,8 @@ phones.
 
 ## Sources
 
-- App testing requirements for new personal developer accounts:
+- App testing requirements for new personal developer accounts (rechecked on
+  2 November 2026 for updates during the test):
   https://support.google.com/googleplay/android-developer/answer/14151465
 - Set up an open, closed, or internal test (Google Groups, opt-in links, the
   internal-test rule, feedback channel, email lists):
@@ -243,5 +323,6 @@ phones.
 Not confirmed: the exact names of the Google Groups privacy settings (they
 are described here by what they do), what a non-member sees at a group link,
 whether one closed track can use an email list and a Google Group together,
-exactly where Play Console shows the running count of opted-in testers, and
-whether a closed track needs a tester list before it can be sent for review.
+exactly where Play Console shows the running count of opted-in testers,
+whether a closed track needs a tester list before it can be sent for review,
+and whether a new closed-track bundle always goes through review.

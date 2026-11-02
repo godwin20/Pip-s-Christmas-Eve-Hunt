@@ -93,19 +93,20 @@ app is a bonus, not a blocker.
 | Done, Sun 1 Nov | Phase 5: store listing and App content. Closed release sent for review | OWNER |
 | By about Sun 8 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
 | By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
+| About Mon 16 Nov, at least 7 days before you apply | The mid-test update: Firestore rules, web release, then a version 2 bundle on the closed track (`testers.md`, section 5) | OWNER |
 | Opt-in date + 14 days, Fri 27 Nov at the latest | Phase 7: apply for production (review usually 7 days or less) | OWNER |
 | By Fri 4 Dec | Production access granted. Phase 8: production release, sent for review | OWNER |
 | By Fri 11 Dec | Live on Google Play, which leaves 14 days for one rejection | |
 
 **Latest safe dates:** send the closed release for review by **Fri 6 Nov**
 (aim for Wed 4 Nov, so testers have two days to opt in), 12th tester opted in
-by **Fri 13 Nov**, apply for production by **Fri 27 Nov**, send the production
-release for review by **Fri 4 Dec**, live by **Fri 11 Dec**. That leaves 14
-days for one rejection.
+by **Fri 13 Nov**, send the mid-test bundle by **Fri 20 Nov**, apply for
+production by **Fri 27 Nov**, send the production release for review by **Fri 4
+Dec**, live by **Fri 11 Dec**. That leaves 14 days for one rejection.
 
 **Absolute last dates, with no room to slip:** send the closed release Thu 19
-Nov, 12th tester Thu 26 Nov, apply Thu 10 Dec, send the production release Thu
-17 Dec, live Thu 24 Dec.
+Nov, 12th tester Thu 26 Nov, mid-test bundle Thu 3 Dec, apply Thu 10 Dec, send
+the production release Thu 17 Dec, live Thu 24 Dec.
 
 ## Costs
 
@@ -543,19 +544,24 @@ them as ideas at most, and write what really happened. Ideas to start from
   paid service, so say so; the Google pages checked here don't mention paid
   testers either way);
   whether they used every feature (nights, crackers, presents, upgrades, the
-  joke gallery, Google sign-in, offline play, feedback) and played as real
-  players would, going by what they actually reported; a summary of the
+  joke gallery, Google sign-in, offline play, feedback, candy, pets, baubles
+  and the Wardrobe tree) and played as real players would, going by what they
+  actually reported; the advent calendar stays hidden until 1 December, so say
+  testers couldn't reach it; a summary of the
   feedback and how you collected it (the in-game Feedback button into
   Firebase, Play's testing feedback, email, any report from PrimeTestLab).
 - **About your app/game:** the audience (families: children from about 6
   playing with their parents, and grown-ups); what makes it unique (a new
   seeded snowy island every night, 102 jokes and Santa's notes with
-  read-aloud, 12 surprise presents, Santa's Workshop upgrades, offline play,
-  and kid-safe by design: no ads, no chat, nothing to buy); an honest
+  read-aloud, 12 surprise presents, Santa's Workshop upgrades, pets to feed,
+  baubles for your own tree, an advent calendar, offline play, and kid-safe by
+  design: no ads, no chat, nothing to buy); an honest
   first-year install estimate.
 - **About your production readiness:** what you changed because of the test,
   and how you decided it was ready (the checks in `testers.md` pass on
-  several phones, no open crashes).
+  several phones, no open crashes). Mention the mid-test update, but count
+  only what testers' reports led to as changes from the test: the new features
+  were planned before it started.
 
 Review usually takes 7 days or less; the answer comes by email. If Google
 asks for more testing, keep the testers in, encourage more play, ask
@@ -585,6 +591,9 @@ Play's policies still cover what the app does, though: **before** a web
 change that changes what data is kept, adds anything users can share with
 each other, ads, purchases, or new kinds of content, update the Data safety
 form, the content rating, the target audience and the privacy policy.
+
+The one game change that also gets a bundle is the mid-test update
+(`testers.md`, section 5), so that Play Console shows a release.
 
 **When you add jokes or features later:**
 
@@ -623,8 +632,8 @@ npx --yes @bubblewrap/cli@<version> build
 
 Opt your own account back in to the internal test first (Phase 4, step 7 had
 you leave it). Upload the new `app-release-bundle.aab` to the internal test,
-check the build on your phone, then put the same bundle on production. Same
-keystore, every time.
+check the build on your phone, then put the same bundle on production (on the
+closed test instead, before production access). Same keystore, every time.
 
 **The yearly target API rise.** Google raises the required target API every
 year: since 31 August 2026 new apps and updates must target API 36
