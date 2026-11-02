@@ -164,7 +164,9 @@ Thank you! A few more days to go").
 ## 4. What to ask testers to check
 
 Put this list in a follow-up email once they've installed. Ask them to say
-their phone model and Android version with anything they report.
+their phone model and Android version with anything they report, and to send
+it through the private feedback option on the app's Play Store page as well as
+the game's Feedback button, so it shows in Play Console too.
 
 1. **Install:** the app installs from the Play Store link, and the icon says
    "Pip's Hunt".
@@ -195,7 +197,7 @@ their phone model and Android version with anything they report.
    "Confirm with Google to finish deleting": please do, and say whether the
    Google window opened and the game then said "All deleted".
 
-Once the update is out (section 5), add these. The advent calendar isn't on
+Once version 2 is out (section 5), add these. The advent calendar isn't on
 the list, because it stays hidden until 1 December.
 
 9. **Candy:** at a little candy cane in the snow, tap, or belly-slide through
@@ -223,23 +225,45 @@ there, and "Delete my saved data" in either clears both.
 - Read feedback in three places: Firebase console > Firestore > `feedback`
   (the in-game button), Play Console > **Monitor and improve > Ratings and
   reviews > Testing feedback** (private feedback through Play), and your
-  email. Keep a short log: Google asks for a summary of the feedback and what
+  email. Keep a short log of what each tester reported, when, and what you
+  changed because of it: Google asks for a summary of the feedback and what
   you changed when you apply for production.
 - Fix things as they come. Web fixes reach testers at once (the game offers
-  "Refresh" on its menus); only Android-side changes need a new bundle on the
-  closed track.
-- Send one real update during the test (below). A new closed-track bundle may
+  "Refresh" on its menus), but they don't show as a release in Play Console.
+  Android-side changes need a new bundle on the closed track.
+- Send two real updates during the test (below). A new closed-track bundle may
   need review again, so never send one while another review is running.
 - Don't remove anyone from the group or the email list, and don't pause the
   track, until production access is approved.
 
-### The mid-test update
+### Two mid-test releases
 
 Google recommends updating your app in closed testing before releasing to
 production, and asks what you changed when you apply. PrimeTestLab advises at
 least one update too. Its claims that an update improves your chances and
 doesn't reset the 14 days are its own: Google's page doesn't mention either,
 and only says testers must stay opted in.
+
+Plan on two, because the game is a website inside an Android wrapper: web fixes
+reach testers but never show as a release in Play Console. Google's refusal
+email, as two developers quote it, gives "acting on user feedback through
+updates to your app" as part of testing best practice. FlexBuddy, a wrapped web
+app like this one, was refused on 24 October 2026. Its record blames one update
+near the start with every later change only on its website, testers from an
+exchange service who barely used the app, and feedback that listed topics
+rather than what happened. Kala Nera Guide, also a wrapped web app, got
+production access after a second test with 3 releases. These are a few
+developers' own records, not proof, and Google doesn't say how many updates it
+wants, but a second release costs little.
+
+| Release | When | What it carries |
+|---|---|---|
+| Version 2 | 12th tester's opt-in date + 3 days, about Mon 16 Nov | The new features |
+| Version 3 | Opt-in date + 10 days, about Mon 23 Nov, once version 2's review has finished | Fixes for what testers reported |
+
+If the opt-in date moves, both move with it.
+
+### Version 2: the new features
 
 Make it a real update. The candy, pets, baubles and Wardrobe tree on branch
 `feature/candy-baubles-advent` are one, so a new button colour or a bare
@@ -248,8 +272,9 @@ version bump isn't needed.
 **When:** a few days after the 12th tester opts in, about Mon 16 Nov, so testers
 have time to play it. Send the bundle at least 7 days before you apply (Fri 20
 Nov at the latest for a Fri 27 Nov application), because a review can take that
-long. If the test runs late, still get the web release out before 1 December,
-so the calendar is there for its first door.
+long. Sending it later than Mon 16 Nov squeezes version 3, whose turn comes
+after this review. If the test runs late, still get the web release out before
+1 December, so the calendar is there for its first door.
 
 **Why a web deploy and a bundle:** the game is a website inside an Android
 wrapper. The web deploy brings testers the new features, but Play Console
@@ -290,13 +315,65 @@ and only its version number changes.
 
    Then **Publishing overview > Send changes for review**. If you're changing
    the store listing too, do that first, so both go in one review.
-8. **Give testers the extra checks** in section 4, and keep logging what they
-   report.
+8. **Give testers the extra checks** in section 4, ask them to update from the
+   Play Store, and keep logging what they report.
 
 The advent calendar stays hidden until 1 December, so testers can't reach it
 before you apply. Check it yourself with `npm run dev:cloud` and
 `http://localhost:5174/?debug=1&date=2026-12-07`, and again on your phone on 1
 December.
+
+### The check a week in
+
+At the opt-in date + 7, about Fri 20 Nov, look at three things in Play Console
+and your log:
+
+- **Opted-in testers:** still 12 or more?
+- **Active devices** in the app's statistics: does the number look like the
+  testers you have?
+- **Feedback:** are reports coming in, and do they say what happened?
+
+If any of these look low, chase the testers first: remind them, and ask
+PrimeTestLab what's going on. Low numbers most likely mean people aren't
+playing. Nothing forces you to apply on day 14, so a few more days of real play
+is a better trade than applying on time with a thin test.
+
+### Version 3: what testers told you
+
+This is the release that shows you acted on feedback, so it has to be real.
+Build it from your log: a bug a tester hit, something that confused them, a
+phone it ran badly on. If testers have reported nothing, chase them rather than
+make something up.
+
+**When:** about Mon 23 Nov, once version 2's review has finished and testers
+have had it for a few days. Never while version 2 is still in review. If that
+review still hasn't finished by Wed 25 Nov, skip version 3: apply on time with
+version 2 alone, and ship the fixes as web deploys.
+
+1. **Pick the fixes from your log.** Only what testers really reported, and only
+   what you can check.
+2. **Ship them on the website:** fix, merge into `main` and push. If a fix
+   changes what the game keeps or what `firestore.rules` allows, do those steps
+   first (`play/README.md`, "Later releases").
+3. **Check the live game on your phone.**
+4. **Build version 3 and check it,** the same way as version 2's steps 5 and 6.
+   The bundle again changes only the version number, so the fixes are in the
+   web deploy and the release notes are what name them.
+5. **Put the same bundle on the closed test,** as in version 2's step 7, with
+   release notes that say what changed in plain words:
+
+   ```text
+   Version 3: fixes from tester feedback. [What changed, one short line each.]
+   ```
+
+6. **Tell testers it's there.** Ask them to update from the Play Store and try
+   again whatever they reported.
+7. **Finish the log entry:** who reported it, what, when, what changed and in
+   which version. You'll need this for Phase 7.
+
+If version 3 is still in review on Fri 27 Nov, let it finish before you apply.
+A review sent on Wed 25 Nov should finish by Wed 2 Dec, and applying that day
+still leaves 9 days before Christmas for one rejection.
 
 ## 6. After production access
 
@@ -319,10 +396,22 @@ phones.
   https://support.google.com/groups/answer/2464926
 - PrimeTestLab's own site, for its plans, prices and timings:
   https://primetestlab.com/
+- Developers' own records of refused closed tests, quoting Google's email
+  (checked on 2 November 2026). FlexBuddy:
+  https://github.com/afa000/flexbuddy/blob/main/android/production-access.md
+  and Graditone: https://github.com/graditone/graditone/issues/396
+- Kala Nera Guide's records of its second test and production access. Don't
+  copy its advice on leaving paid testers off the form:
+  https://github.com/evertvanlaar/CursorKNBD/blob/main/docs/play-store-release/A5-production-access-round2.md
+  and https://github.com/evertvanlaar/CursorKNBD/blob/main/docs/play-store-release/A6-deep-links-assetlinks.md
 
 Not confirmed: the exact names of the Google Groups privacy settings (they
 are described here by what they do), what a non-member sees at a group link,
 whether one closed track can use an email list and a Google Group together,
 exactly where Play Console shows the running count of opted-in testers,
 whether a closed track needs a tester list before it can be sent for review,
-and whether a new closed-track bundle always goes through review.
+whether a new closed-track bundle always goes through review, how many updates
+Google wants to see, whether it treats Play's private feedback differently from
+other feedback, what the private feedback option is called on the Play Store
+page, whether Play Console shows active devices for the closed test alone, and
+whether you can apply while a closed-track review is running.

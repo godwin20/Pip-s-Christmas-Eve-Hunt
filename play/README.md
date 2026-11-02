@@ -93,20 +93,25 @@ app is a bonus, not a blocker.
 | Done, Sun 1 Nov | Phase 5: store listing and App content. Closed release sent for review | OWNER |
 | By about Sun 8 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
 | By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
-| About Mon 16 Nov, at least 7 days before you apply | The mid-test update: Firestore rules, web release, then a version 2 bundle on the closed track (`testers.md`, section 5) | OWNER |
+| About Mon 16 Nov, at least 7 days before you apply | Version 2: Firestore rules, web release, then a version 2 bundle on the closed track (`testers.md`, section 5) | OWNER |
+| About Fri 20 Nov | The check a week in: opted-in testers, active devices, feedback | OWNER |
+| About Mon 23 Nov, once version 2's review has finished | Version 3: fixes for what testers reported, on the website, then a version 3 bundle on the closed track | OWNER |
 | Opt-in date + 14 days, Fri 27 Nov at the latest | Phase 7: apply for production (review usually 7 days or less) | OWNER |
 | By Fri 4 Dec | Production access granted. Phase 8: production release, sent for review | OWNER |
 | By Fri 11 Dec | Live on Google Play, which leaves 14 days for one rejection | |
 
 **Latest safe dates:** send the closed release for review by **Fri 6 Nov**
 (aim for Wed 4 Nov, so testers have two days to opt in), 12th tester opted in
-by **Fri 13 Nov**, send the mid-test bundle by **Fri 20 Nov**, apply for
-production by **Fri 27 Nov**, send the production release for review by **Fri 4
-Dec**, live by **Fri 11 Dec**. That leaves 14 days for one rejection.
+by **Fri 13 Nov**, send the version 2 bundle by **Fri 20 Nov** and version 3 by
+**Wed 25 Nov**, apply for production by **Fri 27 Nov**, send the production
+release for review by **Fri 4 Dec**, live by **Fri 11 Dec**. That leaves 14 days
+for one rejection. If version 3 is still in review on Fri 27 Nov, wait for it,
+which takes those days off the 14 (`testers.md`, section 5).
 
 **Absolute last dates, with no room to slip:** send the closed release Thu 19
-Nov, 12th tester Thu 26 Nov, mid-test bundle Thu 3 Dec, apply Thu 10 Dec, send
-the production release Thu 17 Dec, live Thu 24 Dec.
+Nov, 12th tester Thu 26 Nov, version 2 bundle Thu 3 Dec, version 3 only if that
+review ends in time, apply Thu 10 Dec, send the production release Thu 17 Dec,
+live Thu 24 Dec.
 
 ## Costs
 
@@ -532,6 +537,9 @@ than that date + 14: for example, opted in Fri 13 Nov, apply Fri 27 Nov. Keep
 12 or more opted in the whole time, and keep everyone in until production
 access is approved.
 
+Along the way, send version 2 and version 3 to the closed track and check how
+the test is going a week in (`testers.md`, section 5).
+
 ## Phase 7: apply for production (OWNER)
 
 Dashboard > **Apply for production**, three parts. Your answers are not shown
@@ -549,7 +557,9 @@ them as ideas at most, and write what really happened. Ideas to start from
   actually reported; the advent calendar stays hidden until 1 December, so say
   testers couldn't reach it; a summary of the
   feedback and how you collected it (the in-game Feedback button into
-  Firebase, Play's testing feedback, email, any report from PrimeTestLab).
+  Firebase, Play's testing feedback, email, any report from PrimeTestLab),
+  saying what a tester reported, when, and what changed because of it, not
+  just the topics.
 - **About your app/game:** the audience (families: children from about 6
   playing with their parents, and grown-ups); what makes it unique (a new
   seeded snowy island every night, 102 jokes and Santa's notes with
@@ -559,9 +569,9 @@ them as ideas at most, and write what really happened. Ideas to start from
   first-year install estimate.
 - **About your production readiness:** what you changed because of the test,
   and how you decided it was ready (the checks in `testers.md` pass on
-  several phones, no open crashes). Mention the mid-test update, but count
-  only what testers' reports led to as changes from the test: the new features
-  were planned before it started.
+  several phones, no open crashes). Mention both updates, but count only what
+  testers' reports led to, in version 3 and any web fixes, as changes from the
+  test: version 2's new features were planned before it started.
 
 Review usually takes 7 days or less; the answer comes by email. If Google
 asks for more testing, keep the testers in, encourage more play, ask
@@ -592,8 +602,8 @@ change that changes what data is kept, adds anything users can share with
 each other, ads, purchases, or new kinds of content, update the Data safety
 form, the content rating, the target audience and the privacy policy.
 
-The one game change that also gets a bundle is the mid-test update
-(`testers.md`, section 5), so that Play Console shows a release.
+The only game changes that also get a bundle are the two mid-test releases
+(`testers.md`, section 5), so that Play Console shows them.
 
 **When you add jokes or features later:**
 
