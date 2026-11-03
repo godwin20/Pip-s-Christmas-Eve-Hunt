@@ -15,7 +15,7 @@ import { sfx } from './core/audio.js';
 import { createInput } from './core/input.js';
 import { computeStats } from './game/upgrades.js';
 import { checkMilestones, isActive, isUnlocked } from './game/milestones.js';
-import { rollRarity, pickJoke, RARITY_COINS } from './game/crackers.js';
+import { rollNightRarities, pickJoke, jokesLeft, notesLeft, RARITY_COINS } from './game/crackers.js';
 import { SURPRISES, rollSurprise, applySurprise } from './game/surprises.js';
 import { addCandy, activePetId, meetPuppy, petLevel } from './game/pets.js';
 import { treeSpots, collectBauble } from './game/baubles.js';
@@ -57,7 +57,12 @@ const RESPAWN_BELOW = 5;
 const HOME_OFFER_AFTER = 60; // night seconds, unless something was found already
 const HOME_CONFIRM_DELAY = 0.6; // a press this soon after the last one is a mash, not a yes
 const HOME_CONFIRM_WINDOW = 3.5; // night seconds the "press again" stays armed after a press
+const NOTE_TOAST_AT = 2.5; // night seconds: toasts don't queue, so this one waits for the first to be read
 const HAT_COLOURS = [0xff5d73, 0xffd93d, 0x6bcb77, 0x4d96ff, 0xc77dff, 0xff9f45, 0x5ce1e6];
+// What the Compass Star can look for. It looks every frame, so they stay built.
+const SEEK_ANYTHING = {};
+const SEEK_PRESENT = { type: 'present' };
+const SEEK_RAINBOW = { type: 'cracker', filter: (it) => it.rarity === 'legendary' };
 
 // ---------------------------------------------------------------- renderer
 const canvas = document.getElementById('game');
@@ -350,7 +355,7 @@ function buildWorld(seed, { populate }) {
   if (populate) {
     const rarityRng = ctx.rng.fork('rarity');
     ctx.collectables.populate({
-      crackerRarities: world.crackerSpots.map(() => rollRarity(rarityRng, ctx.stats.jokeLuck)),
+      crackerRarities: rollNightRarities(rarityRng, world.crackerSpots.length, ctx.stats.jokeLuck, save.foundJokes),
       presents: world.presentSpots.length,
       goldenCount: isUnlocked(save, 'goldenPresent') ? 1 : 0,
     });
@@ -379,6 +384,11 @@ function startNight() {
     newJokes: [],
     newUnlocks: [],
     surprises: {},
+    // plain counts, as the compass reads them every frame. The cloud is held
+    // for the night, so only a cracker changes foundJokes until morning.
+    jokesLeft: jokesLeft(save.foundJokes),
+    notesLeft: notesLeft(save.foundJokes),
+    noteToastDue: true,
     speedBoostUntil: 0,
     revealUntil: 0,
     ...newTreatRun(ctx),
@@ -540,12 +550,18 @@ function openItem(item) {
         if (isNew) {
           save.foundJokes.push(joke.id);
           ctx.run.newJokes.push(joke);
+          ctx.run.jokesLeft -= 1;
+          if (joke.rarity === 'legendary') ctx.run.notesLeft -= 1;
         }
         ctx.run.crackers += 1;
         save.totalCrackers += 1;
         writeSave(save);
         hud.setCounts({ crackers: ctx.run.crackers, presents: ctx.run.presents });
-        return popups.showJoke(joke, { isNew, coins: RARITY_COINS[rarity] || 5 });
+        const coins = RARITY_COINS[rarity] || 5;
+        if (isNew) return popups.showJoke(joke, { isNew, coins });
+        // a repeat is no card to dismiss: the coins were paid at the bang
+        ctx.toast(`You know this one! +${coins} ${coins === 1 ? 'coin' : 'coins'}`, '📒');
+        return null;
       })
       .catch((err) => console.error(err))
       .finally(() => {
@@ -648,7 +664,10 @@ function updateSleighPrompt(interactPressed) {
 function updateCompass() {
   const lvl = ctx.stats.compassLevel;
   if (!lvl) return;
-  const target = ctx.collectables.nearest(player.position, lvl >= 2 ? {} : { type: 'present' });
+  // a full gallery leaves crackers with nothing new, so the star sticks to presents
+  const seekCrackers = ctx.run.jokesLeft > 0;
+  let target = lvl >= 3 && seekCrackers ? ctx.collectables.nearest(player.position, SEEK_RAINBOW) : null;
+  if (!target) target = ctx.collectables.nearest(player.position, lvl >= 2 && seekCrackers ? SEEK_ANYTHING : SEEK_PRESENT);
   if (!target) {
     hud.setCompass(null, null);
     return;
@@ -682,6 +701,13 @@ function updatePresentRespawn(dt) {
       return;
     }
   }
+}
+
+// While Notes remain, the island is promised a rainbow cracker: see rollNightRarities.
+function updateNoteToast() {
+  if (!ctx.run.noteToastDue || ctx.time < NOTE_TOAST_AT) return;
+  ctx.run.noteToastDue = false;
+  if (ctx.run.notesLeft > 0) ctx.toast('A rainbow cracker on this island holds a Secret Note from Santa!', '🌈');
 }
 
 function updatePlaying(dt) {
@@ -745,11 +771,13 @@ function updatePlaying(dt) {
   updateCompass();
   updateBuffs();
   updatePresentRespawn(dt);
+  updateNoteToast();
 
   radar.update(dt, {
     playerPos: player.position,
     yaw: rig.yaw,
     items: ctx.collectables.alive(),
+    canes: ctx.stats.radarCanes ? ctx.canes.list : null,
     stats: ctx.stats,
     revealAll: ctx.time < run.revealUntil,
     time: ctx.time,

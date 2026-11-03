@@ -265,9 +265,9 @@ If the opt-in date moves, both move with it.
 
 ### Version 2: the new features
 
-Make it a real update. The candy, pets, baubles and Wardrobe tree on branch
-`feature/candy-baubles-advent` are one, so a new button colour or a bare
-version bump isn't needed.
+Make it a real update. The candy, pets, baubles, Wardrobe tree and new jokes
+on branch `feature/candy-baubles-advent` are one, so a new button colour or a
+bare version bump isn't needed.
 
 **When:** a few days after the 12th tester opts in, about Mon 16 Nov, so testers
 have time to play it. Send the bundle at least 7 days before you apply (Fri 20
@@ -280,6 +280,16 @@ after this review. If the test runs late, still get the web release out before
 wrapper. The web deploy brings testers the new features, but Play Console
 doesn't show it as a release. The version 2 bundle puts the update on record,
 and only its version number changes.
+
+**Before anything else, by Sun 8 Nov: read the 98 new jokes.** A web deploy gets
+no Play review, so you are the only check before children see them. They are
+`j071` to `j136`, `q021` to `q040` and `s013` to `s024` in `src/data/jokes.js`.
+Read them against `content-rating.md`. Removing or changing an entry is safe only
+before the release: once a player has found one, its id is in their save for
+good. If you remove any, the counts must change everywhere they are given: the
+release notes in step 7, the store listing (`store/listing.md`),
+`play/README.md` (Phase 7 and "Later releases"), `docs/CONTRACT.md`,
+`content-rating.md` and `README.md`.
 
 1. **Deploy the Firestore rules first.** The live rules refuse every save with
    the new fields, and the GitHub deploy doesn't publish them:
@@ -307,14 +317,17 @@ and only its version number changes.
    no address bar, and the game opens.
 7. **Put the same bundle on the closed test.** **Create new release** on the
    same track, add it from the app bundle library, and use these release notes
-   (150 / 500):
+   (185 / 500):
 
    ```text
-   Version 2: break candy canes, buy and feed pets, shake trees for baubles and decorate your own Christmas tree. An advent calendar opens on 1 December.
+   Version 2: break candy canes, buy and feed pets, shake trees for baubles, decorate your own Christmas tree and find 98 new jokes, for 200 in all. An advent calendar opens on 1 December.
    ```
 
-   Then **Publishing overview > Send changes for review**. If you're changing
-   the store listing too, do that first, so both go in one review.
+   Before you send it, paste the new joke count into the store listing (the
+   full description in `store/listing.md`), so both go in one review, but only
+   if the jokes that are live match it: the Gallery on the live game must say
+   200. Make any other store listing changes at the same time. Then
+   **Publishing overview > Send changes for review**.
 8. **Give testers the extra checks** in section 4, ask them to update from the
    Play Store, and keep logging what they report.
 

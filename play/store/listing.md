@@ -26,13 +26,17 @@ Help Pip the penguin find crackers, jokes and surprise presents before morning!
 Plain text: Play shows the line breaks as written, and the bullets are the
 `•` character. No emoji, no "best" / "#1" / "download now" / price wording.
 
+**The 200 below belongs to version 2.** Play Console still says 102, and that
+stays right until version 2 is live. Paste the new count in only then
+(`testers.md`, section 5, Version 2, step 7).
+
 ```text
 It's Christmas Eve, and Pip the penguin has one night to find the crackers and presents hidden all over a snowy island before morning comes. Waddle, belly-slide and explore a cosy village of twinkly trees, gingerbread houses and candy-cane lamps under the northern lights.
 
 A gentle, cheerful 3D hunt for children and grown-ups alike. A night lasts about five minutes, just right for a quick game before bed.
 
 CRACKERS AND JOKES
-Pull a Christmas cracker to win a paper crown, a few coins and a joke. There are 102 to collect: silly cracker jokes, cosy sayings and legendary Santa's Secret Notes. Tap "Read aloud" to hear the joke in a funny voice.
+Pull a Christmas cracker to win a paper crown, a few coins and a joke. There are 200 to collect: silly cracker jokes, cosy sayings and legendary Santa's Secret Notes. Tap "Read aloud" to hear the joke in a funny voice.
 
 PRESENTS AND SURPRISES
 Every present hides one of 12 surprises: a snow puppy who sniffs out treats, a reindeer ride at double speed, a snowball storm, a jack-in-the-box, a disco tree, a sneaky gremlin to chase, and, if you are very lucky, Santa himself flying over.
@@ -68,7 +72,7 @@ Merry Christmas from Pip!
 ### Release notes for the first release (138 / 500)
 
 ```text
-First release on Google Play: the full game, with 102 jokes to collect, 12 present surprises, 9 workshop upgrades and 7 rewards to unlock.
+First release on Google Play: the full game, with 200 jokes to collect, 12 present surprises, 9 workshop upgrades and 7 rewards to unlock.
 ```
 
 ## Category and tags
@@ -138,6 +142,21 @@ Play's rules and how these meet them:
 
 ## Screenshots: what each shows, and a suggested order
 
+**Retake 01, 05 and 07 before production.** They were taken before version 2,
+and they are wrong once it is live:
+
+- `01-title.png` says 57 / 102 jokes.
+- `05-santas-workshop.png` shows the old upgrade text ("Radar pings twice as
+  fast", "Radar shows cracker rarity colours", "Star points to the nearest
+  anything").
+- `07-joke-gallery.png` says 57 / 102 found, and its filter buttons say 57/102,
+  44/70, 10/20 and 3/12.
+
+Retake them from a version 2 build, the way "How they were made" describes,
+with the same lived-in save, so the captions and alt text below stay true. Add
+the retake to that section, and upload them before you send the production
+release (`play/README.md`, Phase 8).
+
 Phone screenshots allow up to 8. Suggested phone set, in this order, with
 the gameplay shots first:
 
@@ -152,7 +171,7 @@ the gameplay shots first:
    cross the frozen sea? To go with the floe!") with Read aloud and +10 coins.
 4. `01-title.png`: the title screen with the CSS Pip (scarf, bobble hat, paper
    crown), the snow puppy, the 3D village behind, and a lived-in save
-   (14 nights, 82 presents, 57 / 102 jokes).
+   (14 nights, 82 presents, 57 jokes found).
 5. `05-santas-workshop.png`: Santa's Workshop upgrades (Radar Range, Cracker
    Sense, Compass Star) with levels and Buy buttons.
 6. `06-rewards-milestones.png`: the present milestone track and unlocked
@@ -188,7 +207,7 @@ so look for it beside each image when you upload.
 | `01-title.png` | The title screen: Pip, a snow puppy, a tree, a cracker and a present over a snowy village, with Start Night and menu buttons. |
 | `05-santas-workshop.png` | Santa's Workshop upgrades: Radar Range, Cracker Sense and Compass Star cards, each with its level and a Buy button priced in coins. |
 | `06-rewards-milestones.png` | The rewards track in Santa's Workshop: 82 presents opened, with the scarf, snow puppy, candy forest and rainbow trail unlocked. |
-| `07-joke-gallery.png` | The Joke Gallery at 57 of 102 found, with a grid of joke cards, quotes and a legendary Secret Note. |
+| `07-joke-gallery.png` | The Joke Gallery with 57 found, and a grid of joke cards, quotes and a legendary Secret Note. |
 | `portrait-01-title.png` | The title screen held upright: Pip, a snow puppy, a tree, a cracker and a present above the Start Night and menu buttons. |
 | `portrait-02-cracker-joke.png` | A cracker joke card held upright. What's a penguin's favourite relative? Aunt Arctica! Read aloud button, +5 coins. |
 | `08-leaderboard.png` (only if you retake it) | The Best Night leaderboard with snow names and scores, the player's row marked You!, and the card for choosing a snow name. |

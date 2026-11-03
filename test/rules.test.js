@@ -598,7 +598,7 @@ describe('leaderboard/{uid}: creating', () => {
   });
 
   it('checks ranges', async () => {
-    await assertSucceeds(writeEntry(ALICE, entry({ adj: 39, noun: 0, num: 99, bestNight: 200, totalPresents: 1000000, jokesFound: 102, nights: 100000 })));
+    await assertSucceeds(writeEntry(ALICE, entry({ adj: 39, noun: 0, num: 99, bestNight: 200, totalPresents: 1000000, jokesFound: 200, nights: 100000 })));
     await assertSucceeds(writeEntry(BOB, entry({ adj: 0, noun: 39, num: 1, bestNight: 0, totalPresents: 0, jokesFound: 0, nights: 0 }), BOB));
     const bad = [
       { adj: 40 },
@@ -608,12 +608,18 @@ describe('leaderboard/{uid}: creating', () => {
       { num: 100 },
       { bestNight: 201, totalPresents: 500 },
       { bestNight: -1 },
-      { jokesFound: 103 },
+      { jokesFound: 201 },
       { totalPresents: 1000001 },
       { nights: 100001 },
       { nights: -1 },
     ];
     for (const over of bad) await assertFails(writeEntry('carol', entry(over), 'carol'));
+  });
+
+  it('takes the biggest scores boardScores can send', async () => {
+    const foundJokes = Array.from({ length: 250 }, (_, i) => `j${i}`);
+    const top = boardScores({ totalPresents: 5e6, bestPresentsInNight: 900, nights: 2e5, foundJokes });
+    await assertSucceeds(writeEntry(ALICE, entry(top)));
   });
 
   it('needs bestNight <= totalPresents', async () => {

@@ -7,10 +7,12 @@ Target audience and content, Content rating, Data safety
 (`data-safety.md`) and the short declarations at the end.
 
 What I checked in the game for these answers: the 12 surprises
-(`src/game/surprises.js`, `docs/CONTRACT.md`), all 102 jokes and notes
+(`src/game/surprises.js`, `docs/CONTRACT.md`), all 200 jokes and notes
 (`src/data/jokes.js`, read for anything rude, scary, about alcohol,
 gambling or violence; what turned up is in the table below), the leaderboard
-and feedback (`docs/CLOUD.md`).
+and feedback (`docs/CLOUD.md`). The 98 jokes added for version 2 were written
+and checked by Claude, and still need your own read before they ship
+(`testers.md`, section 5).
 
 ## Content rating (IARC questionnaire)
 

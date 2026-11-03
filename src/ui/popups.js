@@ -325,8 +325,6 @@ export function createPopups(root, sfx) {
       st.style.clipPath = STAR_CLIP;
       const inner = h('span', null, st, 'NEW!');
       inner.style.clipPath = STAR_CLIP;
-    } else if (opts.isNew === false) {
-      h('div', 'pp-sticker pp-sticker--dupe', card, '📒 Already in your gallery!');
     }
 
     const actions = h('div', 'pp-actions', card);

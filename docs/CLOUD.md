@@ -180,6 +180,10 @@ This is a pure function, and its unit tests live in `test/merge.test.js`.
   pushes again, which puts them back from that device's own save.
 - **Release order:** deploy the rules first, then the web build. The older
   deployed rules refuse every save with the new keys.
+- An older cached version caps Jokes Found at 102 on the leaderboard. When it
+  syncs for a player who has found more, the rules refuse its lower score, and
+  its repair then rewrites the entry at 102. The entry goes back up the next
+  time a newer version posts. Code can't fix a version that is already cached.
 
 **`leaderboard/{uid}`**
 - **Read:** any signed-in user. A list query's `limit` must be 50 or fewer if
@@ -193,7 +197,7 @@ This is a pure function, and its unit tests live in `test/merge.test.js`.
 - **A valid entry has:**
   - exactly the keys listed in the data model;
   - `adj` 0..39, `noun` 0..39 and `num` 1..99, matching the list lengths in names.js;
-  - `bestNight` 0..200, `jokesFound` 0..102, `totalPresents` 0..1,000,000 and `nights` 0..100,000;
+  - `bestNight` 0..200, `jokesFound` 0..200, `totalPresents` 0..1,000,000 and `nights` 0..100,000;
   - `bestNight <= totalPresents`;
   - `updatedAt == request.time`.
 

@@ -1,5 +1,5 @@
 // Companions and surprise actors: the snow puppy, the pets you can bring along
-// (Frost Kitten, Baby Reindeer, Penguin Chick), jack-in-the-box, reindeer ride,
+// (Frost Kitten, Little Reindeer, Penguin Chick), jack-in-the-box, reindeer ride,
 // snowball storm, coal buddy, disco tree, runaway gremlin and Santa's flyover.
 // Pure presentation: coins and timers live in surprises.js and treats.js, which
 // hear about outcomes through the callbacks passed in here.

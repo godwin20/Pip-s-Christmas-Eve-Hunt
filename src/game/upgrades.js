@@ -11,7 +11,7 @@ export const UPGRADES = [
     name: 'Radar Range',
     icon: '📡',
     costs: [40, 120, 300],
-    levels: ['Radar sees 40 m', 'Radar sees 60 m', 'Radar sees 90 m'],
+    levels: ['Radar sees 40 m', 'Radar sees 60 m', 'Radar sees 90 m, and candy canes too'],
     blurb: 'A bigger dish on your radar so you spot treats from further away.',
   },
   {
@@ -19,7 +19,7 @@ export const UPGRADES = [
     name: 'Cracker Sense',
     icon: '🎉',
     costs: [50, 150, 350],
-    levels: ['Crackers show on the radar', 'Radar pings twice as fast', 'Radar shows cracker rarity colours'],
+    levels: ['Crackers show on the radar', 'Radar shows which crackers are rare', 'Radar points to rainbow crackers anywhere'],
     blurb: 'Teach your radar to sniff out crackers too.',
   },
   {
@@ -27,7 +27,7 @@ export const UPGRADES = [
     name: 'Compass Star',
     icon: '⭐',
     costs: [80, 200, 450],
-    levels: ['Star points to the nearest present', 'Star points to the nearest anything', 'Star shows the distance too'],
+    levels: ['Star points to the nearest present', 'Star points to the nearest present or cracker', 'Star finds rainbow crackers first'],
     blurb: 'A little guiding star that floats over Pip.',
   },
   {
@@ -51,7 +51,7 @@ export const UPGRADES = [
     name: 'Lucky Bow',
     icon: '🎀',
     costs: [70, 180, 400],
-    levels: ['Better surprises, less coal', 'Even better surprises', 'Santa visits more often!'],
+    levels: ['Better surprises, less coal', 'Even better surprises', 'Mega Presents twice as often'],
     blurb: 'A lucky ribbon that makes presents nicer.',
   },
   {
@@ -59,8 +59,8 @@ export const UPGRADES = [
     name: 'Magnet Mittens',
     icon: '🧤',
     costs: [60, 170, 380],
-    levels: ['Auto-open treats within 2 m', 'Auto-open within 3.5 m', 'Auto-open within 5 m'],
-    blurb: 'Fuzzy mittens that pull treats right to you.',
+    levels: ['Auto-open treats within 2.5 m', 'Auto-open within 3.5 m', 'Auto-open within 5 m, plus canes and baubles'],
+    blurb: 'Fuzzy mittens that open treats as Pip waddles past.',
   },
   {
     id: 'sack',
@@ -75,8 +75,8 @@ export const UPGRADES = [
     name: 'Joke Detector',
     icon: '🔍',
     costs: [60, 160, 360],
-    levels: ['More rare jokes', 'Even more rare jokes', 'Lots of legendary secrets'],
-    blurb: 'Finds the funniest crackers on the island.',
+    levels: ['More rainbow crackers', 'Even more rainbow crackers', 'The most rainbow crackers'],
+    blurb: "Rainbow crackers hold Santa's Secret Notes. This finds more of them.",
   },
 ];
 
@@ -125,13 +125,16 @@ export function computeStats(save) {
     radarRange: [25, 40, 60, 90][L('radar')],
     radarShowCrackers: L('crackerSense') >= 1,
     radarPingSeconds: L('crackerSense') >= 2 ? 1.5 : 3,
-    radarRarity: L('crackerSense') >= 3,
-    compassLevel: L('compass'), // 0 none, 1 nearest present, 2 nearest anything, 3 + distance
+    radarRarity: L('crackerSense') >= 2,
+    radarRainbowArrow: L('crackerSense') >= 3,
+    radarCanes: L('radar') >= 3,
+    compassLevel: L('compass'), // 0 none, 1 nearest present, 2 nearest anything, 3 rainbow crackers first + distance
     speedMult: (1 + 0.15 * L('speedy')) * perks.speedMult,
     iceGrip: L('speedy') >= 1,
     nightSeconds: BASE_NIGHT_SECONDS + 30 * L('longerNight'),
     luck: L('luckyBow'), // 0..3
-    magnetRadius: [0, 2, 3.5, 5][L('magnet')],
+    magnetRadius: [0, 2.5, 3.5, 5][L('magnet')],
+    magnetTreats: L('magnet') >= 3, // the radius reaches canes and baubles too
     extraPresents: 2 * L('sack'),
     jokeLuck: L('jokeDetector'), // 0..3
     sniffMult: perks.sniffMult, // how far the Snow Puppy sniffs, as a multiple

@@ -559,7 +559,7 @@
   background: #9a5bd6;
 }
 
-/* NEW! / duplicate stickers */
+/* NEW! sticker */
 .pp-sticker {
   position: absolute;
   z-index: 3;
@@ -585,24 +585,6 @@
   color: #fff;
   text-shadow: 0 2px 0 rgba(42, 27, 61, 0.4);
   background: radial-gradient(circle at 40% 35%, #ff7682, var(--red) 60%);
-}
-
-.pp-sticker--dupe {
-  top: 8px;
-  right: -12px;
-  max-width: 150px;
-  padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.15;
-  text-align: center;
-  color: var(--ink);
-  background: var(--ice);
-  border: 3px solid var(--ink);
-  border-radius: 12px;
-  box-shadow: var(--shadow-sm);
-  --pp-tilt: 8deg;
-  animation: pp-stamp 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) 0.35s both;
 }
 
 /* actions + reward */
@@ -849,14 +831,6 @@
 
   .pp-sticker--new > span {
     font-size: 18px;
-  }
-
-  .pp-sticker--dupe {
-    top: 34px;
-    right: -4px;
-    max-width: 112px;
-    padding: 4px 8px;
-    font-size: 11px;
   }
 
   .pp-banner {

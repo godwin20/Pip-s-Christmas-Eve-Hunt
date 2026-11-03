@@ -89,6 +89,16 @@ function settle(ctx, drop) {
   expect(drop.resting).toBe(true);
 }
 
+// Shakes trees until one drops a bauble.
+function firstDrop(ctx) {
+  for (const tree of ctx.shakes.trees) {
+    standBy(ctx, tree, 1.6);
+    const drop = shakeTree(ctx, tree);
+    if (drop) return drop;
+  }
+  throw new Error('nothing fell');
+}
+
 describe('candy canes', () => {
   it('pays 2 to 4 candy once, and keeps the ledger true', () => {
     const { ctx, log } = night();
@@ -215,15 +225,6 @@ describe('shaking trees', () => {
 });
 
 describe('baubles', () => {
-  function firstDrop(ctx) {
-    for (const tree of ctx.shakes.trees) {
-      standBy(ctx, tree, 1.6);
-      const drop = shakeTree(ctx, tree);
-      if (drop) return drop;
-    }
-    throw new Error('nothing fell');
-  }
-
   it('can only be picked up once it has landed', () => {
     const { ctx } = night();
     const drop = firstDrop(ctx);
@@ -262,6 +263,109 @@ describe('baubles', () => {
     expect(log.banners).toEqual([]);
     expect(ctx.run.newBaubles).toEqual([]);
     expect(log.toasts[0]).toContain(getBauble(drop.bauble.id).name);
+  });
+});
+
+describe('Magnet Mittens', () => {
+  function withMittens(level) {
+    const save = defaultSave();
+    save.upgrades = { magnet: level };
+    return night(save);
+  }
+
+  it('reach further each level, and to canes and baubles only at level 3', () => {
+    const stats = [0, 1, 2, 3].map((magnet) => computeStats({ ...defaultSave(), upgrades: { magnet } }));
+    expect(stats.map((s) => s.magnetRadius)).toEqual([0, 2.5, 3.5, 5]);
+    expect(stats.map((s) => s.magnetTreats)).toEqual([false, false, false, true]);
+  });
+
+  it('crack a cane within 5 m at level 3, with no slide, and pay as usual', () => {
+    const { ctx, log } = withMittens(3);
+    const cane = ctx.canes.list[0];
+    standBy(ctx, cane, 4.9);
+    updateTreats(ctx);
+    expect(cane.alive).toBe(false);
+    expect(ctx.run.canes).toBe(1);
+    expect(ctx.save.candy).toBe(ctx.run.candyEarned);
+    expect(ctx.save.candy).toBeGreaterThan(0);
+    expect(log.sounds).toContain('crack');
+  });
+
+  it('stop at the edge of the 5 m, sliding or not', () => {
+    const { ctx } = withMittens(3);
+    const cane = ctx.canes.list[0];
+    standBy(ctx, cane, 5.1);
+    updateTreats(ctx);
+    ctx.player.sliding = true;
+    updateTreats(ctx);
+    expect(cane.alive).toBe(true);
+  });
+
+  it('leave canes to a slide below level 3', () => {
+    for (const level of [1, 2]) {
+      const { ctx } = withMittens(level);
+      const cane = ctx.canes.list[0];
+      standBy(ctx, cane, 1);
+      updateTreats(ctx);
+      expect(cane.alive).toBe(true);
+    }
+  });
+
+  it('collect a landed bauble within 5 m, but not one still falling', () => {
+    const { ctx } = withMittens(3);
+    const drop = firstDrop(ctx);
+    ctx.player.position.copy(drop.group.position);
+    updateTreats(ctx);
+    expect(ctx.save.foundBaubles).toEqual([]);
+    settle(ctx, drop);
+    ctx.player.position.copy(drop.group.position);
+    ctx.player.position.x += 4.9;
+    updateTreats(ctx);
+    expect(ctx.save.foundBaubles).toEqual([drop.bauble.id]);
+    expect(ctx.shakes.drops).toHaveLength(0);
+  });
+
+  it('leave a bauble beyond 5 m, and any bauble beyond touching below level 3', () => {
+    const far = withMittens(3);
+    const farDrop = firstDrop(far.ctx);
+    settle(far.ctx, farDrop);
+    far.ctx.player.position.copy(farDrop.group.position);
+    far.ctx.player.position.x += 5.1;
+    updateTreats(far.ctx);
+    expect(far.ctx.save.foundBaubles).toEqual([]);
+
+    const weak = withMittens(2);
+    const weakDrop = firstDrop(weak.ctx);
+    settle(weak.ctx, weakDrop);
+    weak.ctx.player.position.copy(weakDrop.group.position);
+    weak.ctx.player.position.x += TREAT_TUNING.touchReach + 0.1;
+    updateTreats(weak.ctx);
+    expect(weak.ctx.save.foundBaubles).toEqual([]);
+  });
+
+  it('take a repeat bauble as coins, as walking into it does', () => {
+    const { ctx, log } = withMittens(3);
+    const drop = firstDrop(ctx);
+    settle(ctx, drop);
+    ctx.save.foundBaubles.push(drop.bauble.id);
+    ctx.player.position.copy(drop.group.position);
+    ctx.player.position.x += 4;
+    updateTreats(ctx);
+    expect(log.coins).toEqual([BAUBLE_TUNING.duplicateCoins]);
+  });
+
+  it('stop once morning comes', () => {
+    const { ctx } = withMittens(3);
+    const cane = ctx.canes.list[0];
+    const drop = firstDrop(ctx);
+    settle(ctx, drop);
+    cane.x = drop.group.position.x + 1;
+    cane.z = drop.group.position.z;
+    ctx.player.position.copy(drop.group.position);
+    ctx.run.timeLeft = 0;
+    updateTreats(ctx);
+    expect(cane.alive).toBe(true);
+    expect(ctx.save.foundBaubles).toEqual([]);
   });
 });
 
@@ -320,7 +424,7 @@ describe('perks reach the stats', () => {
     expect(computeStats(old).speedMult).toBe(1);
   });
 
-  it('multiplies the Baby Reindeer into speed alongside the skates', () => {
+  it('multiplies the Little Reindeer into speed alongside the skates', () => {
     expect(computeStats(save({ reindeer: 5 }, 'reindeer')).speedMult).toBeCloseTo(1.1);
     expect(computeStats(save({ reindeer: 5 }, 'reindeer', { speedy: 2 })).speedMult).toBeCloseTo(1.3 * 1.1);
     expect(computeStats(save({ reindeer: 5 })).speedMult).toBe(1);

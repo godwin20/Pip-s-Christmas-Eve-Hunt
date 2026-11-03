@@ -112,16 +112,20 @@ export function updateTreatPrompt(ctx, pressed) {
 }
 
 // Everything that happens without a key press: sliding through a cane, walking
-// into a bauble and the Frost Kitten's coins. Call once per playing frame.
+// into a bauble, the top Magnet Mittens reaching both, and the Frost Kitten's
+// coins. Call once per playing frame: main.js stops calling it while a card is
+// up, and a bauble that is still falling can't be touched at any reach.
 export function updateTreats(ctx) {
   const run = ctx.run;
   if (run.timeLeft <= 0) return;
   const pos = ctx.player.position;
-  if (ctx.player.sliding) {
-    const cane = ctx.canes.nearest(pos, T.slideReach);
+  const magnet = ctx.stats.magnetTreats ? ctx.stats.magnetRadius : 0;
+  const caneReach = Math.max(magnet, ctx.player.sliding ? T.slideReach : 0);
+  if (caneReach > 0) {
+    const cane = ctx.canes.nearest(pos, caneReach);
     if (cane) breakCane(ctx, cane);
   }
-  const drop = ctx.shakes.touching(pos, T.touchReach);
+  const drop = ctx.shakes.touching(pos, Math.max(magnet, T.touchReach));
   if (drop) collectDrop(ctx, drop);
   if (ctx.stats.giftCoins > 0 && ctx.time >= run.nextGiftAt) {
     run.nextGiftAt += ctx.stats.giftSeconds;

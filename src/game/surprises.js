@@ -119,6 +119,7 @@ export const SURPRISE_TUNING = {
   radarSeconds: 10,
   coalCoins: 1,
   megaMinis: 3,
+  megaLuckyMult: 2, // a maxed Lucky Bow doubles the Mega Present's weight
   discoSeconds: 10,
   discoCoins: 20,
   // Decorated trees live in the village square; further away than this the
@@ -142,7 +143,7 @@ function luckOf(stats) {
 
 // Effective weight of a surprise at a given Lucky Bow level (0..3):
 // coal shrinks fast, the gremlin a little, nice surprises grow +15 % per
-// level and Santa's weight is 1 + luck.
+// level, Santa's weight is 1 + luck and a maxed bow doubles the Mega Present.
 export function surpriseWeight(def, luck = 0) {
   if (!def) return 0;
   const L = luckOf({ luck });
@@ -150,7 +151,8 @@ export function surpriseWeight(def, luck = 0) {
   if (def.id === 'santa') return base + L;
   if (def.id === 'coal') return base * (1 - 0.25 * L);
   if (def.id === 'gremlin') return base * (1 - 0.1 * L);
-  return def.good ? base * (1 + 0.15 * L) : base;
+  const weight = def.good ? base * (1 + 0.15 * L) : base;
+  return def.id === 'mega' && L >= 3 ? weight * SURPRISE_TUNING.megaLuckyMult : weight;
 }
 
 export function rollSurprise(rng, stats) {

@@ -154,7 +154,7 @@ service cloud.firestore {
         nameOk(d) &&
         intIn(d.bestNight, 0, 200) &&
         intIn(d.totalPresents, 0, 1000000) &&
-        intIn(d.jokesFound, 0, 102) &&
+        intIn(d.jokesFound, 0, 200) &&
         intIn(d.nights, 0, 100000) &&
         d.bestNight <= d.totalPresents &&
         d.updatedAt == request.time;

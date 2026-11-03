@@ -60,12 +60,12 @@ menus' CSS Pip. The service worker only exists in production builds
 
 ## What's in it
 
-- **Crackers:** 102 jokes, cosy quotes and legendary *Santa's Secret Notes*, in common, rare and legendary crackers.
+- **Crackers:** 200 jokes, cosy quotes and legendary *Santa's Secret Notes*, in common, rare and legendary crackers.
 - **Presents:** 12 surprises, including a snow puppy, a reindeer ride, a snowball storm, a disco tree, a sneaky gremlin and a Santa flyover.
 - **Randomiser and map generation:** every night is a new seeded island, with the map number shown on the results screen.
 - **Radar:** shows nearby treats, and points the way when nothing is in range.
 - **Santa's Workshop:** 9 upgrades with 3 levels each.
-- **Candy and pets:** crack the little candy canes in the snow for candy, then buy a Frost Kitten, a Baby Reindeer or a Penguin Chick in the Workshop's Pets tab, and feed them (and the Snow Puppy) up to friendship level 5. One new pet comes along each night, as well as the puppy.
+- **Candy and pets:** crack the little candy canes in the snow for candy, then buy a Frost Kitten, a Little Reindeer or a Penguin Chick in the Workshop's Pets tab, and feed them (and the Snow Puppy) up to friendship level 5. One new pet comes along each night, as well as the puppy.
 - **Baubles and your tree:** shake pine and lollipop trees to find baubles, with 24 designs to collect. Hang them on your tree in the Wardrobe, and Pip's Tree in the village square wears them every night.
 - **Advent Calendar:** in December only, a button on the title screen opens 24 doors with chocolates behind them, for coins, candy and a Golden Star bauble behind door 24. Missed doors stay ready until 31 December.
 - **Present Milestones:** rewards at 10 / 25 / 50 / 75 / 100 / 150 / 200 presents, switched on and off in the Wardrobe.

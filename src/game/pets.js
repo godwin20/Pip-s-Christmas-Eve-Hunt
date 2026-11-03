@@ -15,7 +15,7 @@ export const PET_TUNING = {
   sniffPerLevel: 0.15, // Snow Puppy: further per level above 1
   giftSeconds: 40, // Frost Kitten: how often it brings coins
   giftCoinsPerLevel: 2,
-  speedPerLevel: 0.02, // Baby Reindeer: faster per level
+  speedPerLevel: 0.02, // Little Reindeer: faster per level
   caneBonus: [0, 1, 1, 2, 2, 3], // Penguin Chick: extra candy per cane, by level
 };
 
@@ -42,7 +42,7 @@ export const PETS = [
   },
   {
     id: 'reindeer',
-    name: 'Baby Reindeer',
+    name: 'Little Reindeer',
     icon: '🦌',
     price: T.prices.reindeer,
     blurb: 'Skips along beside Pip and helps them run faster.',

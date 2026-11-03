@@ -11,7 +11,7 @@ import { JOKES, JOKE_COUNTS } from '../data/jokes.js';
 import { SURPRISES } from '../game/surprises.js';
 import { UPGRADES, MAX_LEVEL, upgradeLevel, nextCost, buyUpgrade, computeStats } from '../game/upgrades.js';
 import { MILESTONES, getMilestone, isUnlocked, isActive, nextMilestone } from '../game/milestones.js';
-import { RARITY_COINS } from '../game/crackers.js';
+import { RARITY_COINS, notesLeft } from '../game/crackers.js';
 import { PETS, MAX_PET_LEVEL, PET_NOTE, petLevel, feedCost, buyPet, feedPet, activePetId, setActivePet, perkText } from '../game/pets.js';
 import { BAUBLES, TREE_SLOTS, TREE_ROWS, GOLDEN_STAR_ID, getBauble, foundCount, slotOf, placeBauble, removeBauble, treeSpots } from '../game/baubles.js';
 import { ADVENT_TUNING, DOOR_LAYOUT, getChocolate, isAdventTime, doorState, readyDoors, openedDoors, lockedDoorText } from '../game/advent.js';
@@ -33,6 +33,7 @@ const KIND_INFO = {
   secret: { icon: '🤫', label: 'Secret', plural: 'Secrets' },
 };
 const RARITY_LABEL = { common: 'Common', rare: 'Rare', legendary: 'Legendary' };
+const LOCKED_CARDS_SHOWN = 24;
 
 const FILTERS = [
   { id: 'all', icon: '🎄', label: 'All' },
@@ -286,6 +287,7 @@ const EXTRA_CSS = `
   color: var(--ink-soft);
   font-size: 0.95rem;
   font-weight: 600;
+  text-align: center;
 }
 .scr-grid__divider::before,
 .scr-grid__divider::after {
@@ -424,6 +426,44 @@ function countFound(save) {
   let n = 0;
   for (const j of JOKE_LIST) if (found.has(j.id)) n++;
   return n;
+}
+
+// What tonight's finds did for the Gallery: the Results screen's banner, for
+// the last joke of all or the highest multiple of 25 the count passed tonight.
+export function galleryNews(found, newCount, total) {
+  if (newCount <= 0) return null;
+  if (found >= total) return { full: true, text: `You found every joke, saying and Secret Note. All ${fmt(total)}!` };
+  const mark = Math.floor(found / 25) * 25;
+  if (mark <= 0 || mark <= found - newCount) return null;
+  return { full: false, text: `${fmt(mark)} jokes in your Gallery! ${fmt(total - found)} still hiding.` };
+}
+
+// How far along Santa's Secret Notes are, or null once they're all found.
+export function notesGoal(foundIds) {
+  const left = notesLeft(foundIds);
+  if (!left) return null;
+  return { have: JOKE_COUNTS.legendary - left, total: JOKE_COUNTS.legendary };
+}
+
+// The divider above the "???" cards.
+export function hidingText(filter, n) {
+  return filter === 'secret' ? `🌈 Secret Notes hide in rainbow crackers. Still hiding: ${fmt(n)}` : `🔒 Still hiding in crackers: ${fmt(n)}`;
+}
+
+// Every filter tap builds all its cards, so a long "???" list stops early and
+// says how many more there are. Found cards are never cut.
+export function lockedPreview(missing) {
+  const more = missing.length - LOCKED_CARDS_SHOWN;
+  return { shown: missing.slice(0, LOCKED_CARDS_SHOWN), more: more > 0 ? `...and ${fmt(more)} more hiding in crackers.` : null };
+}
+
+// Nothing left to find or to buy.
+export function huntComplete(save) {
+  return countFound(save) >= jokeTotal() && UPGRADES.every((u) => nextCost(save, u.id) === null);
+}
+
+export function maxedHint(coinsEarned) {
+  return `✨ Wow! Every upgrade is maxed out. Pip is the best-equipped penguin in the North Pole! You've earned ${fmt(coinsEarned)} coins in all.`;
 }
 
 function surpriseDef(id) {
@@ -1741,7 +1781,8 @@ export function createScreens(root, deps = {}) {
             ),
             progressBar(save.totalPresents / Math.max(1, next.count), 'scr-bar--thin')
           )
-        : h('div', { class: 'scr-ticket__next' }, h('b', null, '🏆 Every reward unlocked! You are a true Present Legend!'))
+        : h('div', { class: 'scr-ticket__next' }, h('b', null, '🏆 Every reward unlocked! You are a true Present Legend!')),
+      huntComplete(save) ? h('p', { class: 'scr-ticket__done' }, "Pip's hunt is complete! Every joke found and every upgrade bought.") : null
     );
 
     resetArea = h('div', { class: 'scr-reset' });
@@ -2223,6 +2264,9 @@ export function createScreens(root, deps = {}) {
 
   function showResults(summary) {
     state.lastSummary = normaliseSummary(summary);
+    // Counted now, before the night's sync merges in another device's finds,
+    // so a redraw can't move tonight's Gallery banner.
+    state.lastSummary.foundAtEnd = countFound(getSave());
     // the night is over: from now on the summary says what was new tonight
     state.nightFoundStart = null;
     state.nightOn = true; // results always follow a night, however it began
@@ -2274,6 +2318,21 @@ export function createScreens(root, deps = {}) {
     open('results', () => buildResults(s, instant));
   }
 
+  function nextBox(icon, label, name, fraction, count) {
+    return h(
+      'div',
+      { class: 'scr-nextbox' },
+      h('span', { class: 'scr-nextbox__icon', 'aria-hidden': 'true' }, icon),
+      h(
+        'div',
+        { class: 'scr-nextbox__text' },
+        h('span', null, label, h('b', null, name)),
+        progressBar(fraction),
+        h('small', null, count)
+      )
+    );
+  }
+
   function buildResults(s, instant) {
     const save = getSave();
     const hasCloud = !!cloud();
@@ -2310,6 +2369,18 @@ export function createScreens(root, deps = {}) {
     );
 
     const sections = [];
+
+    const news = galleryNews(s.foundAtEnd ?? countFound(save), s.newJokes.length, jokeTotal());
+    if (news) {
+      sections.push(
+        h(
+          'div',
+          { class: `scr-jokenews${news.full ? ' scr-jokenews--full' : ''}` },
+          h('span', { 'aria-hidden': 'true' }, news.full ? '🌈 ' : '📖 '),
+          news.text
+        )
+      );
+    }
 
     if (record) {
       sections.push(h('div', { class: 'scr-record' }, h('span', { 'aria-hidden': 'true' }, '⭐'), ' Your best night yet! ', h('span', { 'aria-hidden': 'true' }, '⭐')));
@@ -2449,21 +2520,16 @@ export function createScreens(root, deps = {}) {
     }
     sections.push(surprisesSection);
 
-    // Next milestone
+    // What to chase next. Rewards can run out first, so the Notes box stands alone.
     const next = nextMilestone(save);
-    if (next) {
+    const notes = notesGoal(save.foundJokes);
+    if (next || notes) {
       sections.push(
         h(
           'div',
-          { class: 'scr-nextbox' },
-          h('span', { class: 'scr-nextbox__icon', 'aria-hidden': 'true' }, next.icon),
-          h(
-            'div',
-            { class: 'scr-nextbox__text' },
-            h('span', null, 'Next reward: ', h('b', null, next.name)),
-            progressBar(save.totalPresents / Math.max(1, next.count)),
-            h('small', null, `${fmt(save.totalPresents)} / ${fmt(next.count)} presents`)
-          )
+          { class: 'scr-nextboxes' },
+          next ? nextBox(next.icon, 'Next reward: ', next.name, save.totalPresents / Math.max(1, next.count), `${fmt(save.totalPresents)} / ${fmt(next.count)} presents`) : null,
+          notes ? nextBox('🌈', 'Next goal: ', "Santa's Secret Notes", notes.have / notes.total, `${fmt(notes.have)} / ${fmt(notes.total)} found`) : null
         )
       );
     }
@@ -2472,7 +2538,7 @@ export function createScreens(root, deps = {}) {
     const feedback = feedbackLink('results', 'scr-textlink');
     if (feedback) sections.push(h('p', { class: 'scr-fbline' }, feedback));
 
-    const confetti = s.newUnlocks.length || record ? (instant ? null : confettiLayer()) : null;
+    const confetti = s.newUnlocks.length || record || news?.full ? (instant ? null : confettiLayer()) : null;
 
     const foot = [
       button("Santa's Workshop", {
@@ -2692,7 +2758,7 @@ export function createScreens(root, deps = {}) {
     }, Infinity);
     const allMax = cheapest === Infinity;
     const hint = allMax
-      ? h('p', { class: 'scr-hintline' }, '✨ Wow! Every upgrade is maxed out. Pip is the best-equipped penguin in the North Pole!')
+      ? h('p', { class: 'scr-hintline' }, maxedHint(save.coinsEarned))
       : save.coins < cheapest
         ? h('p', { class: 'scr-hintline' }, '🪙 Pull crackers and open presents to earn more coins!')
         : null;
@@ -3539,10 +3605,13 @@ export function createScreens(root, deps = {}) {
       const got = list.filter((j) => foundAt.has(j.id)).sort((a, b) => foundAt.get(b.id) - foundAt.get(a.id));
       const missing = list.filter((j) => !foundAt.has(j.id));
       const cards = got.map((j, k) => foundCard(j, JOKE_INDEX.get(j.id), k, fresh.has(j.id)));
-      if (got.length && missing.length) {
-        cards.push(h('p', { class: 'scr-grid__divider' }, `🔒 Still hiding in crackers: ${fmt(missing.length)}`));
+      // the Secrets divider teaches where Notes hide, so it comes before the first find too
+      if (missing.length && (got.length || f === 'secret')) {
+        cards.push(h('p', { class: 'scr-grid__divider' }, hidingText(f, missing.length)));
       }
-      missing.forEach((j, k) => cards.push(lockedCard(j, JOKE_INDEX.get(j.id), got.length + k)));
+      const locked = lockedPreview(missing);
+      locked.shown.forEach((j, k) => cards.push(lockedCard(j, JOKE_INDEX.get(j.id), got.length + k)));
+      if (locked.more) cards.push(h('p', { class: 'scr-grid__more' }, locked.more));
       grid.replaceChildren(...cards);
     };
 
@@ -5903,7 +5972,8 @@ export function createScreens(root, deps = {}) {
             h('span', { class: 'scr-rar scr-rar--common' }, 'Common ', coin(), ` ${coins.common}`),
             h('span', { class: 'scr-rar scr-rar--rare' }, 'Rare ', coin(), ` ${coins.rare}`),
             h('span', { class: 'scr-rar scr-rar--legendary' }, 'Legendary ', coin(), ` ${coins.legendary}`)
-          )
+          ),
+          h('p', null, "Rainbow crackers are the legendary ones, and they hold Santa's Secret Notes!")
         ),
         note(
           'scr-tint--mint',

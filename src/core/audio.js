@@ -609,7 +609,7 @@ const SOUNDS = {
     tone(t, { f: 620 * p, pts: pitch, dur: 0.32, peak: 0.08, attack: 0.03, dest: out });
   },
 
-  // Baby Reindeer: a wobbly little "meh-eh".
+  // Little Reindeer: a wobbly little "meh-eh".
   bleat(t, out, p) {
     const o = tone(t, { type: 'sawtooth', f: 460 * p, pts: [[0.07, 560 * p], [0.34, 470 * p]], dur: 0.36, peak: 0.15, attack: 0.015, filter: 'bandpass', ff: 1300 * p, fq: 1.6, dest: out });
     vibrato(o, t + 0.05, 14, 34 * p, 22 * p, 0.3);

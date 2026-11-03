@@ -1,7 +1,8 @@
 // Round candy-cane radar drawn on a 2D canvas. Rotates with the camera so
 // camera-forward is always up, sweeps once per stats.radarPingSeconds and
-// shows presents (gift-box dots) and crackers (little bon-bons). When nothing
-// is in range it softly points the rim toward the nearest treat it could show.
+// shows presents (gift-box dots), crackers (little bon-bons) and, with a top
+// radar, candy canes. When nothing is in range it softly points the rim toward
+// the nearest treat it could show.
 //
 // Everything is drawn in a logical 200 x 200 space and scaled to the canvas'
 // real pixel size, so it stays crisp on hi-dpi screens and at any CSS size.
@@ -37,9 +38,11 @@ const DEFAULT_STATS = {
   radarShowCrackers: false,
   radarPingSeconds: 3,
   radarRarity: false,
+  radarRainbowArrow: false,
 };
 const NO_OPTS = {};
 const DASH = [2, 5];
+const CANE_STRIPES = [2.2, 2.2];
 const NO_DASH = [];
 
 export function createRadar(canvas) {
@@ -201,6 +204,29 @@ export function createRadar(canvas) {
     ctx.fillRect(bw - 1.2, -bh, 1.2, bh * 2);
     ctx.restore();
     ctx.globalAlpha = alpha;
+  }
+
+  // Smaller and plainer than the treats: a white hook with red stripes.
+  function drawCane(x, y, s) {
+    const hook = s * 0.42;
+    const top = y - s * 0.35;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x + hook, y + s * 0.8);
+    ctx.lineTo(x + hook, top);
+    ctx.arc(x, top, hook, 0, Math.PI, true);
+    ctx.lineWidth = 4.2;
+    ctx.strokeStyle = INK;
+    ctx.stroke();
+    ctx.lineWidth = 2.4;
+    ctx.strokeStyle = RIBBON;
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+    ctx.setLineDash(CANE_STRIPES);
+    ctx.strokeStyle = RED;
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawSparkle(x, y, r, rot, color) {
@@ -436,10 +462,12 @@ export function createRadar(canvas) {
     const period = Math.max(0.25, Number(stats.radarPingSeconds) || 3);
     const showCrackers = reveal || !!stats.radarShowCrackers;
     const rarity = !!stats.radarRarity;
+    const rainbowArrow = !!stats.radarRainbowArrow;
     const yaw = Number.isFinite(o.yaw) ? o.yaw : 0;
     const t = Number.isFinite(o.time) ? o.time : (clock += dt);
     const p = o.playerPos;
     const items = o.items;
+    const canes = o.canes;
 
     if (range !== lastRange) {
       lastRange = range;
@@ -569,6 +597,26 @@ export function createRadar(canvas) {
       }
     }
 
+    // candy canes, under the treats. No arrows and no part of `visible`: they
+    // are an extra, so a radar showing only canes still gives the "this way" hint
+    if (p && canes) {
+      const range2 = range * range;
+      for (let i = 0; i < canes.length; i++) {
+        const c = canes[i];
+        if (!c.alive) continue;
+        const dx = c.x - p.x;
+        const dz = c.z - p.z;
+        if (dx * dx + dz * dz > range2) continue;
+        const f = dx * sinA + dz * cosA;
+        const r = -dx * cosA + dz * sinA;
+        let delta = (sweep - Math.atan2(r, f)) % TAU;
+        if (delta < 0) delta += TAU;
+        ctx.globalAlpha = 1 - 0.6 * (delta / TAU);
+        drawCane(C + r * k, C - f * k, 6.4);
+      }
+      ctx.globalAlpha = 1;
+    }
+
     // blips
     let visible = 0;
     let hintDist = Infinity; // nearest showable item beyond range (no reveal)
@@ -589,7 +637,10 @@ export function createRadar(canvas) {
         const r = -dx * cosA + dz * sinA;
         const dist = Math.sqrt(f * f + r * r);
         const inRange = dist <= range;
-        if (!inRange && !reveal) {
+        // Cracker Sense 3: a rainbow cracker keeps a rim arrow however far off.
+        // It is no blip in range, so it neither pings nor stops the hint.
+        const rainbowRim = rainbowArrow && !inRange && !reveal && isCracker && it.rarity === 'legendary';
+        if (!inRange && !reveal && !rainbowRim) {
           if (dist < hintDist) {
             hintDist = dist;
             hintIdx = i;
@@ -598,7 +649,7 @@ export function createRadar(canvas) {
           }
           continue;
         }
-        visible++;
+        if (!rainbowRim) visible++;
 
         const theta = Math.atan2(r, f); // clockwise from up
         let delta = (sweep - theta) % TAU;

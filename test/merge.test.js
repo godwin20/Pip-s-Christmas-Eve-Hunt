@@ -758,7 +758,7 @@ describe('boardScores', () => {
       totalPresents: 5e6,
       bestPresentsInNight: 900,
       nights: 2e5,
-      foundJokes: Array.from({ length: 150 }, (_, i) => `j${i}`),
+      foundJokes: Array.from({ length: 250 }, (_, i) => `j${i}`),
     };
     expect(boardScores(s)).toEqual({
       bestNight: BOARD_LIMITS.bestNight,

@@ -31,7 +31,7 @@ export const CLOUD_LIMITS = {
 export const BOARD_LIMITS = {
   bestNight: 200,
   totalPresents: 1000000,
-  jokesFound: 102,
+  jokesFound: 200,
   nights: 100000,
 };
 
