@@ -8,7 +8,7 @@
 // Next to index.html, so relative links work on any host and in the app.
 export const POLICY_PAGE = 'privacy.html';
 export const DELETE_PAGE = 'delete-data.html';
-export const POLICY_UPDATED = '1 November 2026';
+export const POLICY_UPDATED = '3 November 2026';
 
 // The Privacy screen's list. The pages say each as "lead text".
 export const PRIVACY_FACTS = [

@@ -10,9 +10,9 @@ What I checked in the game for these answers: the 12 surprises
 (`src/game/surprises.js`, `docs/CONTRACT.md`), all 200 jokes and notes
 (`src/data/jokes.js`, read for anything rude, scary, about alcohol,
 gambling or violence; what turned up is in the table below), the leaderboard
-and feedback (`docs/CLOUD.md`). The 98 jokes added for version 2 were written
-and checked by Claude, and still need your own read before they ship
-(`testers.md`, section 5).
+and feedback (`docs/CLOUD.md`). The 98 jokes added on 3 November were written
+and checked by Claude and went live before you read them, so read them
+yourself (`testers.md`, section 5).
 
 ## Content rating (IARC questionnaire)
 

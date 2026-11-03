@@ -26,9 +26,10 @@ Help Pip the penguin find crackers, jokes and surprise presents before morning!
 Plain text: Play shows the line breaks as written, and the bullets are the
 `•` character. No emoji, no "best" / "#1" / "download now" / price wording.
 
-**The 200 below belongs to version 2.** Play Console still says 102, and that
-stays right until version 2 is live. Paste the new count in only then
-(`testers.md`, section 5, Version 2, step 7).
+**The live game has had 200 jokes since 3 November.** Play Console still says
+102, which undersells it but isn't false. Paste the new count in with the
+version 2 release, once Google's review of the closed release has finished
+(`testers.md`, section 5, step 6).
 
 ```text
 It's Christmas Eve, and Pip the penguin has one night to find the crackers and presents hidden all over a snowy island before morning comes. Waddle, belly-slide and explore a cosy village of twinkly trees, gingerbread houses and candy-cane lamps under the northern lights.
@@ -142,8 +143,8 @@ Play's rules and how these meet them:
 
 ## Screenshots: what each shows, and a suggested order
 
-**Retake 01, 05 and 07 before production.** They were taken before version 2,
-and they are wrong once it is live:
+**Retake 01, 05 and 07 before production.** They were taken before the 3
+November update, and they no longer match the game:
 
 - `01-title.png` says 57 / 102 jokes.
 - `05-santas-workshop.png` shows the old upgrade text ("Radar pings twice as
@@ -152,7 +153,7 @@ and they are wrong once it is live:
 - `07-joke-gallery.png` says 57 / 102 found, and its filter buttons say 57/102,
   44/70, 10/20 and 3/12.
 
-Retake them from a version 2 build, the way "How they were made" describes,
+Retake them from the live game, the way "How they were made" describes,
 with the same lived-in save, so the captions and alt text below stay true. Add
 the retake to that section, and upload them before you send the production
 release (`play/README.md`, Phase 8).

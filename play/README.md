@@ -92,27 +92,28 @@ app is a bonus, not a blocker.
 | Done | Phases 1 to 4: Play Console account, Bubblewrap build, keystore backup, the user-site repo, the app, the internal test, Play's fingerprints | OWNER |
 | Done, Sun 1 Nov | Phase 5: store listing and App content. Closed release sent for review | OWNER |
 | By about Sun 8 Nov | Closed release approved (new accounts: up to 7 days, sometimes more). Buy the testers that day, add them, send the opt-in link (`testers.md`) | OWNER, testers |
-| By Sun 8 Nov | Read the 98 new jokes before they ship with version 2 (`testers.md`, section 5) | OWNER |
+| Done, Tue 3 Nov | Everything new went live on the web: candy, pets, baubles, rainbow crackers, the upgrade changes and 200 jokes, with the Firestore rules deployed first | ASSISTANT |
+| By Sun 8 Nov | Read the 98 new jokes, live since 3 Nov. To change one, keep its id (`testers.md`, section 5) | OWNER |
 | By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
-| About Mon 16 Nov, at least 7 days before you apply | Version 2: Firestore rules, web release, then a version 2 bundle on the closed track (`testers.md`, section 5) | OWNER |
+| About Mon 16 Nov (opt-in date + 3) | Version 2: the first fixes from testers on the web, then a version 2 bundle on the closed track (`testers.md`, section 5) | ASSISTANT, OWNER |
 | About Fri 20 Nov | The check a week in: opted-in testers, active devices, feedback | OWNER |
-| About Mon 23 Nov, once version 2's review has finished | Version 3: fixes for what testers reported, on the website, then a version 3 bundle on the closed track | OWNER |
-| Opt-in date + 14 days, Fri 27 Nov at the latest | Phase 7: apply for production (review usually 7 days or less) | OWNER |
+| Mon 23 Nov at the latest (opt-in date + 10), once version 2's review has finished | Version 3: more fixes for what testers reported, on the web, then a version 3 bundle on the closed track | ASSISTANT, OWNER |
+| Opt-in date + 14 days, Fri 27 Nov | Phase 7: apply for production on day 14, since PrimeTestLab's testers stay 20 days (review usually 7 days or less) | OWNER |
 | By Fri 4 Dec | Production access granted. Phase 8: production release, sent for review | OWNER |
 | By Fri 11 Dec | Live on Google Play, which leaves 14 days for one rejection | |
 
 **Latest safe dates:** send the closed release for review by **Fri 6 Nov**
 (aim for Wed 4 Nov, so testers have two days to opt in), 12th tester opted in
-by **Fri 13 Nov**, send the version 2 bundle by **Fri 20 Nov** and version 3 by
-**Wed 25 Nov**, apply for production by **Fri 27 Nov**, send the production
+by **Fri 13 Nov**, send the version 2 bundle by **Mon 16 Nov** and version 3 by
+**Mon 23 Nov**, apply for production on **Fri 27 Nov**, send the production
 release for review by **Fri 4 Dec**, live by **Fri 11 Dec**. That leaves 14 days
-for one rejection. If version 3 is still in review on Fri 27 Nov, wait for it,
-which takes those days off the 14 (`testers.md`, section 5).
+for one rejection. If version 3 is still in review on Fri 27 Nov, apply anyway
+if Play Console lets you (`testers.md`, section 5).
 
 **Absolute last dates, with no room to slip:** send the closed release Thu 19
-Nov, 12th tester Thu 26 Nov, version 2 bundle Thu 3 Dec, version 3 only if that
-review ends in time, apply Thu 10 Dec, send the production release Thu 17 Dec,
-live Thu 24 Dec.
+Nov, 12th tester Thu 26 Nov, version 2 bundle Sun 29 Nov, version 3 Sun 6 Dec
+if version 2's review has ended, apply Thu 10 Dec, send the production release
+Thu 17 Dec, live Thu 24 Dec.
 
 ## Costs
 
@@ -571,8 +572,9 @@ them as ideas at most, and write what really happened. Ideas to start from
 - **About your production readiness:** what you changed because of the test,
   and how you decided it was ready (the checks in `testers.md` pass on
   several phones, no open crashes). Mention both updates, but count only what
-  testers' reports led to, in version 3 and any web fixes, as changes from the
-  test: version 2's new features and jokes were planned before it started.
+  testers' reports led to as changes from the test: the candy, pets, baubles,
+  rainbow crackers, upgrade changes and 200 jokes went live on 3 November,
+  before it started.
 
 Review usually takes 7 days or less; the answer comes by email. If Google
 asks for more testing, keep the testers in, encourage more play, ask
@@ -619,15 +621,15 @@ The only game changes that also get a bundle are the two mid-test releases
   players' finds are silently cut on sync. To add more, raise all four first
   and deploy the rules with the new jokes. The GitHub deploy doesn't publish
   the rules, so deploy them yourself, before the web deploy.
-- **Never roll the website back to a build from before version 2** once
+- **Never roll the website back to a build from before 3 November** once
   players have found more than 102 jokes. An older build caps Jokes Found at
   102 and pulls their leaderboard entries back down (`docs/CLOUD.md`).
 - **Update the counts in the listing.** `store/listing.md` gives the number of
   jokes in the full description and the release notes, and the surprises,
   upgrades and rewards too. Update the Play Console texts and the character
-  counts to match, and "200 jokes" in Phase 7 above. Version 2 carries the 98
-  new jokes that take the count to 200, and `testers.md`, section 5, Version 2,
-  step 7 says when to paste it into Play Console.
+  counts to match, and "200 jokes" in Phase 7 above. The 98 new jokes that
+  take the count to 200 went live on 3 November, and `testers.md`, section 5,
+  step 6 says when to paste the count into Play Console.
 - **Add new features to the listing, after Google's review.** Once the app is
   through Google's review, add features that came later (candy and pets, baubles
   and your tree, the advent calendar) to the feature list in `store/listing.md`

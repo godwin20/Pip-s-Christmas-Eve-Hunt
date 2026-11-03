@@ -197,8 +197,9 @@ the game's Feedback button, so it shows in Play Console too.
    "Confirm with Google to finish deleting": please do, and say whether the
    Google window opened and the game then said "All deleted".
 
-Once version 2 is out (section 5), add these. The advent calendar isn't on
-the list, because it stays hidden until 1 December.
+These came with the 3 November update, so testers can check them from the
+start. The advent calendar isn't on the list, because it stays hidden until 1
+December.
 
 9. **Candy:** at a little candy cane in the snow, tap, or belly-slide through
    it. Does it break and give candy?
@@ -209,8 +210,10 @@ the list, because it stays hidden until 1 December.
     tree drops a bauble, so try a few. Then Santa's Workshop > Wardrobe > Your
     Christmas Tree: hang it. Does it show on Pip's Tree in the village on the
     next night?
-12. **Smoothness:** does a night feel as smooth as it did before the update?
-    Please give your phone model if it feels slower.
+12. **Rainbow crackers:** every island has a rainbow cracker while Santa's
+    Secret Notes are left to find. Pull it: does it give a Secret Note?
+13. **Smoothness:** does a night feel smooth? Please give your phone model if
+    it stutters or feels slow.
 
 Good to know: the app and Chrome on the same phone share the game's save. If
 someone played the web version in Chrome before, the app carries on from
@@ -233,6 +236,8 @@ there, and "Delete my saved data" in either clears both.
   Android-side changes need a new bundle on the closed track.
 - Send two real updates during the test (below). A new closed-track bundle may
   need review again, so never send one while another review is running.
+- Apply on day 14. PrimeTestLab's testers stay 20 days, and nothing is promised
+  after that.
 - Don't remove anyone from the group or the email list, and don't pause the
   track, until production access is approved.
 
@@ -256,55 +261,37 @@ production access after a second test with 3 releases. These are a few
 developers' own records, not proof, and Google doesn't say how many updates it
 wants, but a second release costs little.
 
+Everything new went live on the web on Tue 3 November, before the test: candy
+and pets, baubles and Pip's Tree, rainbow crackers with the new upgrade levels,
+200 jokes, and the advent calendar, which stays hidden until 1 December. So
+testers get the whole game from their first night, and both releases below are
+for what they find. PrimeTestLab's testers stay 20 days, the 14 Google needs
+and 6 more, with nothing promised after that.
+
 | Release | When | What it carries |
 |---|---|---|
-| Version 2 | 12th tester's opt-in date + 3 days, about Mon 16 Nov | The new features |
-| Version 3 | Opt-in date + 10 days, about Mon 23 Nov, once version 2's review has finished | Fixes for what testers reported |
+| Version 2 | 12th tester's opt-in date + 3 days, about Mon 16 Nov | The first fixes from what testers report, and the first update on record |
+| Version 3 | Opt-in date + 9 or 10 days, Mon 23 Nov at the latest, once version 2's review has finished | More fixes from what testers report |
+| Apply | Opt-in date + 14 days, Fri 27 Nov | Phase 7 in `play/README.md` |
 
-If the opt-in date moves, both move with it.
+If the opt-in date moves, all three move with it.
 
-### Version 2: the new features
+### Each release, step by step
 
-Make it a real update. The candy, pets, baubles, Wardrobe tree and new jokes
-on branch `feature/candy-baubles-advent` are one, so a new button colour or a
-bare version bump isn't needed.
+Claude does the web side when you ask (say "release version 2"). You build and
+upload the bundle, because it needs your keystore passwords.
 
-**When:** a few days after the 12th tester opts in, about Mon 16 Nov, so testers
-have time to play it. Send the bundle at least 7 days before you apply (Fri 20
-Nov at the latest for a Fri 27 Nov application), because a review can take that
-long. Sending it later than Mon 16 Nov squeezes version 3, whose turn comes
-after this review. If the test runs late, still get the web release out before
-1 December, so the calendar is there for its first door.
-
-**Why a web deploy and a bundle:** the game is a website inside an Android
-wrapper. The web deploy brings testers the new features, but Play Console
-doesn't show it as a release. The version 2 bundle puts the update on record,
-and only its version number changes.
-
-**Before anything else, by Sun 8 Nov: read the 98 new jokes.** A web deploy gets
-no Play review, so you are the only check before children see them. They are
-`j071` to `j136`, `q021` to `q040` and `s013` to `s024` in `src/data/jokes.js`.
-Read them against `content-rating.md`. Removing or changing an entry is safe only
-before the release: once a player has found one, its id is in their save for
-good. If you remove any, the counts must change everywhere they are given: the
-release notes in step 7, the store listing (`store/listing.md`),
-`play/README.md` (Phase 7 and "Later releases"), `docs/CONTRACT.md`,
-`content-rating.md` and `README.md`.
-
-1. **Deploy the Firestore rules first.** The live rules refuse every save with
-   the new fields, and the GitHub deploy doesn't publish them:
-
-   ```bash
-   npx firebase deploy --only firestore:rules --project pip-s-christmas-eve-hunt
-   ```
-
-2. **Set "Last updated" to that day** in `public/privacy.html`,
-   `public/delete-data.html` and `POLICY_UPDATED` in `src/ui/privacy-text.js`.
-3. **Merge the branch into `main` and push.** GitHub Pages publishes it.
-4. **Check the live game on your phone:** take the Refresh on the menus, play a
-   night, break a cane, buy a pet and hang a bauble.
-5. **Build version 2 in your own terminal.** `update` raises the version code
-   to 2, and `build` asks for the keystore passwords. Same keystore as before.
+1. **Pick the fixes from your log.** Only what testers really reported, and only
+   what you can check. If testers have reported nothing by version 3, chase them
+   rather than make something up. Version 2 may come too soon for much: then it
+   carries whatever is ready, and its notes say what's in the game.
+2. **Ship them on the website:** merge into `main` and push. If a fix changes
+   what the game keeps or what `firestore.rules` allows, deploy the rules and
+   update the privacy pages first (`play/README.md`, "Later releases").
+3. **Check the live game on your phone:** take the Refresh on the menus and try
+   what changed.
+4. **Build the bundle in your own terminal.** `update` raises the version code
+   by one, and `build` asks for the keystore passwords. Same keystore as before.
 
    ```bash
    cd ~/pips-hunt-android
@@ -313,23 +300,47 @@ release notes in step 7, the store listing (`store/listing.md`),
    ```
 
    Copy the updated `twa-manifest.json` to your backups.
-6. **Check it on the internal test first** (`play/README.md`, "Later releases"):
+5. **Check it on the internal test first** (`play/README.md`, "Later releases"):
    no address bar, and the game opens.
-7. **Put the same bundle on the closed test.** **Create new release** on the
-   same track, add it from the app bundle library, and use these release notes
-   (185 / 500):
+6. **Put the same bundle on the closed test.** **Create new release** on the
+   same track, add it from the app bundle library, and write release notes that
+   say what changed in plain words. Version 2 (187 / 500 before any fixes are
+   added in front):
 
    ```text
-   Version 2: break candy canes, buy and feed pets, shake trees for baubles, decorate your own Christmas tree and find 98 new jokes, for 200 in all. An advent calendar opens on 1 December.
+   Version 2: candy canes and pets to feed, baubles for your own Christmas tree, rainbow crackers with Santa's Secret Notes, and 200 jokes to collect. An advent calendar opens on 1 December.
    ```
 
-   Before you send it, paste the new joke count into the store listing (the
-   full description in `store/listing.md`), so both go in one review, but only
-   if the jokes that are live match it: the Gallery on the live game must say
-   200. Make any other store listing changes at the same time. Then
-   **Publishing overview > Send changes for review**.
-8. **Give testers the extra checks** in section 4, ask them to update from the
-   Play Store, and keep logging what they report.
+   Version 3:
+
+   ```text
+   Version 3: fixes from tester feedback. [What changed, one short line each.]
+   ```
+
+   With version 2, paste the 200 joke count into the store listing too (the
+   full description in `store/listing.md`), so both go in one review. Make any
+   other store listing changes at the same time. Then **Publishing overview >
+   Send changes for review**. A new closed-track bundle may need review again,
+   so never send one while another review is running.
+7. **Tell testers it's there.** Ask them to update from the Play Store and try
+   again whatever they reported.
+8. **Finish the log entry:** who reported it, what, when, what changed and in
+   which version. You'll need this for Phase 7.
+
+**Timing:** send version 3 by day 10, so its review can finish by day 14. Apply
+on day 14 whatever happens: PrimeTestLab's testers leave after day 20, and
+Google's review can take 7 days. If version 3 is still in review on day 14,
+apply anyway if Play Console lets you, and otherwise as soon as the review
+ends. If version 2's review runs so long that version 3 can't go by day 10,
+skip version 3 and ship those fixes as web deploys.
+
+**The new jokes went live before you read them.** Read them by Sun 8 Nov on the
+page Claude made for it. They are `j071` to `j136`, `q021` to `q040` and
+`s013` to `s024` in `src/data/jokes.js`; read them against `content-rating.md`.
+To change one, keep its id and change its words, which is safe at any time.
+Don't remove one and add another in its place: the old id stays in players'
+saves, so with 200 jokes their saved list would go over its cap of 200 and
+lose finds on sync.
 
 The advent calendar stays hidden until 1 December, so testers can't reach it
 before you apply. Check it yourself with `npm run dev:cloud` and
@@ -346,47 +357,10 @@ and your log:
   testers you have?
 - **Feedback:** are reports coming in, and do they say what happened?
 
-If any of these look low, chase the testers first: remind them, and ask
-PrimeTestLab what's going on. Low numbers most likely mean people aren't
-playing. Nothing forces you to apply on day 14, so a few more days of real play
-is a better trade than applying on time with a thin test.
-
-### Version 3: what testers told you
-
-This is the release that shows you acted on feedback, so it has to be real.
-Build it from your log: a bug a tester hit, something that confused them, a
-phone it ran badly on. If testers have reported nothing, chase them rather than
-make something up.
-
-**When:** about Mon 23 Nov, once version 2's review has finished and testers
-have had it for a few days. Never while version 2 is still in review. If that
-review still hasn't finished by Wed 25 Nov, skip version 3: apply on time with
-version 2 alone, and ship the fixes as web deploys.
-
-1. **Pick the fixes from your log.** Only what testers really reported, and only
-   what you can check.
-2. **Ship them on the website:** fix, merge into `main` and push. If a fix
-   changes what the game keeps or what `firestore.rules` allows, do those steps
-   first (`play/README.md`, "Later releases").
-3. **Check the live game on your phone.**
-4. **Build version 3 and check it,** the same way as version 2's steps 5 and 6.
-   The bundle again changes only the version number, so the fixes are in the
-   web deploy and the release notes are what name them.
-5. **Put the same bundle on the closed test,** as in version 2's step 7, with
-   release notes that say what changed in plain words:
-
-   ```text
-   Version 3: fixes from tester feedback. [What changed, one short line each.]
-   ```
-
-6. **Tell testers it's there.** Ask them to update from the Play Store and try
-   again whatever they reported.
-7. **Finish the log entry:** who reported it, what, when, what changed and in
-   which version. You'll need this for Phase 7.
-
-If version 3 is still in review on Fri 27 Nov, let it finish before you apply.
-A review sent on Wed 25 Nov should finish by Wed 2 Dec, and applying that day
-still leaves 9 days before Christmas for one rejection.
+If any of these look low, chase the testers: remind them, and ask PrimeTestLab
+what's going on. Low numbers most likely mean people aren't playing. Still apply
+on day 14, because PrimeTestLab's testers stay only 20 days, and waiting would
+leave Google's review with fewer of them.
 
 ## 6. After production access
 
