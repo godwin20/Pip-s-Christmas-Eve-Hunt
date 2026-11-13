@@ -274,11 +274,13 @@ Timer top-centre (big friendly clock, turns red & wobbles in last 30 s), coins t
 `export function createPopups(root, sfx)` →
 ```
 { showJoke(joke, { isNew, coins }) /* Promise, modal */, showSurprise(def, detail) /* non-modal banner ~3 s; def.colours [main, accent] draws a bauble in place of def.icon */,
-  showUnlock(milestone) /* Promise, modal */, isModalOpen(), closeModal() }
+  showUnlock(milestone) /* Promise, modal */, isModalOpen(), closeModal(),
+  back() /* Android's Back: what Esc does to the open card; false in its first 350 ms */ }
 ```
 - Joke card: cracker-paper strip slip (torn edges), rarity ribbon ("NEW!" sticker; a repeat gets no card, as main.js shows a "You know this one! +N coins" toast instead), shows `q`, then "Tap to see the answer!" reveals `a` with a bounce (quotes/secrets show both at once). Buttons: 🔊 Read aloud (`sfx.speak`), "Ha! Next" closes. Keyboard: E / Space / Enter reveals then closes. Legendary gets a rainbow animated border.
 - Surprise banner: big icon + name + detail sliding in from top, auto-hides.
 - Unlock: celebratory card with icon, name, desc, confetti CSS.
+- Short screens (under 541px tall, e.g. a phone held sideways): the joke card grows wider with smaller words so every entry fits with its buttons in view; if the words still can't fit, they scroll inside the slip while the buttons stay put, and a Secret Note's TOP SECRET stamp follows the words rather than sitting in the slip's corner. On short screens at least 560px wide the unlock card puts its badge beside the words.
 
 ### `src/ui/glnote.js` (+ `src/ui/glnote.css`): when the 3D can't run
 `export function showGlNote(kind /* 'nogl' | 'lost' */, { root, onButton })` → `{ hide() }`
@@ -357,16 +359,70 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
   stage, popup cards and banners stay inside them; the canvas and backdrops
   fill the screen.
 
+### `src/core/back.js` (Android's Back button, and a browser's)
+In the Play app (a Trusted Web Activity) Back walks the page's history and
+closes the app when there is none. Past the title, `GUARD_DEPTH` (5) extra
+history entries (`history.pushState({ pipsHuntBack: n }, '')` for n = 1…5:
+same URL, never a path, hash or query) sit on top, so each Back pops one
+instead and the game does what the screen's own button does:
+- `backAction({ card, menu, playing })` (pure) → `'card'` (a joke card or new
+  reward is up: its Next / close), `'menu'` (a menu, or a question over the
+  title such as the grown-ups gate, the feedback card or a confirm step: what
+  Esc does there), `'pause'` (a night is running), or `null` on the plain
+  title, where Back leaves the game. `guardDepth(state)` says how far up our
+  stack an entry is (0 if it isn't ours), `isGuard(state)` whether it is ours,
+  and `activates(event)` whether an input event is one Chrome counts as user
+  activation: a `pointerup` from a finger or pen, a `mousedown`, a `click`, or
+  a `keydown` that is not Esc, not a modifier on its own (Shift, Ctrl, Alt,
+  Meta…) and not held with Ctrl, Alt or Meta. Never a `touchend`: a finger
+  that swipes or scrolls gets `pointercancel` and `touchend` but no
+  `pointerup`, and Chrome counts nothing. The guard also drops a `pointerup`
+  while another finger of the same touch was cancelled, as Chrome does.
+- Chrome's history manipulation intervention: when a page adds an entry with
+  no user activation since the browser's last Back or Forward, Chrome marks
+  every entry of the page skippable until the next activation, and the Back
+  button skips them (so in the Play app, with nothing left, the app closes).
+  So entries are only ever added after one of those inputs that came after
+  the last popstate (and, where `navigator.userActivation` exists, while it
+  says `isActive`); never straight after a Back. Five at once (one activation
+  keeps them all) let Back pause, resume, pause, resume and pause again
+  mid-night with no touch in between; the next touch tops them up. With no
+  touch at all, the sixth Back in a row leaves.
+- Firefox (`skipsUntouchedEntries(win)`: a Gecko user agent) skips on Back
+  every entry, but the first, that the player never touched while it was
+  showing, so it would skip four of five. There the guard keeps one entry and
+  puts it back straight after every Back, which Firefox allows (its rule is
+  about the entry Back lands on, and the page's own entry was touched).
+- `createBackGuard({ read, act, win, firefox })` → `{ sync(), dispose(), armed, depth }`
+  (`firefox` overrides the user agent check, for tests).
+  `read()` describes the game, `act(action)` carries a Back out. `sync()`
+  (main.js calls it every frame) tops the entries up when Back has something
+  to do and the player has touched the game since the last popstate (in
+  Firefox, at once), and on
+  the plain title takes them all away with one `history.go(-depth)`, so the
+  next Back leaves at once; that pop is its own and acts on nothing. A popstate
+  to a lower depth is a Back (one action, however far it went); a higher one
+  is Forward and does nothing. Entries left from before a reload stay marked,
+  so the first `sync()` on the title takes them away like any others and the
+  next Back leaves (Chrome treats that step as the same page; a browser that
+  loaded the page again would do so once, never in a loop). It listens for
+  input on `window` in the capture phase, so main.js makes it before the
+  popups and screens, whose key listeners stop some keys.
+- main.js: `read: () => ({ card: popups.isModalOpen(), menu: screens.hasBack(),
+  playing: state === 'playing' })`, and `act` calls `popups.back()`,
+  `screens.back()` or `pause()`.
+
 ### `src/ui/screens.js` (+ `src/ui/screens.css`, imported by screens.js)
 `export function createScreens(root, deps)` with
-`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), getIslandSeed() /* map number of the last night, or null */, onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged(), getNow() /* today, as a Date: the dev server's ?date= can change it */, onOpenDoor(day) /* opens and pays a calendar door: { day, chocolate, coins, candy, bauble, baubleIsNew } or null */ }` →
+`deps = { getSave(), persist(), sfx, cloud, pwa, onStartNight(), getIslandSeed() /* map number of the last night, or null */, onResume(), onQuitToTitle(), onResetSave(), onSettingsChanged(), getNow() /* today, as a Date: the dev server's ?date= can change it */, onOpenDoor(day) /* opens and pays a calendar door: { day, chocolate, coins, candy, bauble, baubleIsNew } or null */, isTouch() /* the HUD's touch mode: touch words instead of key names */ }` →
 ```
 { showTitle(), showResults(summary), showShop(), showAdvent(), showGallery(back /* 'title'|'shop'|'pause' */), showPause(), showHelp(), hideAll(), current /* string|null */,
-  refresh(), cloudChanged() /* docs/CLOUD.md */, pwaChanged() /* src/core/pwa.js */ }
+  refresh(), cloudChanged() /* docs/CLOUD.md */, pwaChanged() /* src/core/pwa.js */,
+  back() /* what Esc does: Android's Back (src/core/back.js) */, hasBack() /* anything but the plain title */ }
 ```
 `summary = { seed, crackers, presents, coinsEarned, candyEarned, newBaubles: [bauble], newJokes: [joke], newUnlocks: [milestone], surprises: {id:count}, endedEarly }`.
 - **Title**: big cute logo "Pip's Christmas Eve Hunt" with a CSS penguin/present doodle, falling CSS snow, buttons Start Night / Santa's Workshop / Advent Calendar (December only, with a gold dot while a door is ready) / Joke Gallery / How to Play, sound+music toggles, "Present Legend" title badge if `jumper` unlocked, stats line (nights, presents, jokes found x/y), small "Reset progress" with a confirm step, and (with a cloud) "⭐ Feedback" on the same bottom line.
-- **Results**: "Christmas Eve is over!" (or "Home early!"), counts with count-up animation, coins earned, a line for tonight's candy and new baubles (when there are any), seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
+- **Results**: "Christmas Eve is over!" (or "Home early!"), the HUD's four counters as tiles with count-up animation (crackers, presents, coins earned with the purse, candy collected with the candy you have; two by two on narrow screens), a line for new baubles (when there are any), seed ("Map #123456"), list of new jokes (mini cards), surprises tally with icons, new unlocks celebrated, buttons Santa's Workshop / Next Night / Title, and (with a cloud) a small "⭐ Feedback" link at the end of the page.
 - **Privacy** (docs/CLOUD.md, "Privacy note screen"): the plain-words list
   from `PRIVACY_FACTS` in `src/ui/privacy-text.js` (which `public/privacy.html`
   repeats word for word), "📄 Read the full privacy policy" (`privacy.html`,
@@ -381,5 +437,7 @@ fullscreen, minimal-ui or window-controls-overlay, or iOS `navigator.standalone`
 - **Advent Calendar** (`isAdventTime(now)` only; Escape = back to the title): 24 real buttons in `DOOR_LAYOUT` order, 6 across (4 on phones). A speech bubble over the doors (`role="status"`) says what happened, and never moves them. A locked door wiggles and says `lockedDoorText(day)`. A ready door glows; a tap calls `deps.onOpenDoor(day)`, and main.js pays through `ctx.addCoins`, `ctx.addCandy` and `collectBauble` so the ledgers stay right. An opened door shows its chocolate (inline SVG from `CHOCOLATES`) and says its name again when tapped. Focus starts on the lowest ready door. `refresh()` and coming back to the tab (`visibilitychange`, as a game left open can see the date change) update the doors in place, and the title's button and dot too.
 - **Gallery**: scrapbook page; filter chips All / Jokes / Quotes / Secrets(Legendary); counter "42 / 200 found"; grid of cards — found cards show the `q` and flip on click to show `a` (with 🔊 read aloud); unfound show "???" silhouette with a cracker outline and rarity tint, at most 24 of them in a list, then "...and N more hiding in crackers." Back button.
 - **Pause**: Resume, Gallery, Sound toggles, Go home (end night early), Quit to title.
-- **Help**: controls and a short cute explanation of crackers, presents, radar, shop, candy and pets, and baubles (and, in December only, the calendar).
+- **Help**: controls and a short cute explanation of crackers, presents, radar, shop, candy and pets, and baubles (and, in December only, the calendar). On touch (`deps.isTouch()`) the Controls card lists the touch controls (drag left to waddle, drag right to look, pinch, tap, the Slide and pause buttons) and the notes say "tap"; on a keyboard it lists the keys.
+- Key hints ("Esc = back" on page footers, "Esc = resume" on the pause card) are for keyboards only: on touch they are left out, and the footer keeps no room for them.
 - All screens are full-screen overlays with a semi-transparent night backdrop, cosy rounded cards, candy-stripe accents, Fredoka font, buttons with chunky shadows and hover bounce. Keyboard: Escape = back.
+- Short screens (under 541px tall, e.g. a phone held sideways; screens.css): a page scrolls as one, its header scrolling away and its buttons pinned to the bottom edge, instead of scrolling a strip between the two. When the screen is also at least 560px wide, the Advent Calendar's speech bubble sits beside the doors (and stays in view), the pause card puts sleepy Pip beside its buttons, the title puts its menu beside the scene, and the feedback card sets the stars beside the topic; a short upright window (split screen) keeps them stacked. Up to 760px wide, Results' line under the banner keeps clear of the map stamp in the corner.

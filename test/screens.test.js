@@ -4,7 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
-import { chocolateHTML, treeSpotPlaces, galleryNews, notesGoal, hidingText, lockedPreview, huntComplete, maxedHint } from '../src/ui/screens.js';
+import { chocolateHTML, treeSpotPlaces, galleryNews, notesGoal, hidingText, lockedPreview, huntComplete, maxedHint, controlsList } from '../src/ui/screens.js';
 import { CHOCOLATES, CHOCOLATE_SHAPES } from '../src/game/advent.js';
 import { BAUBLES, BAUBLE_PATTERNS, TREE_SLOTS } from '../src/game/baubles.js';
 import { JOKES } from '../src/data/jokes.js';
@@ -177,10 +177,114 @@ describe('the end of the hunt', () => {
   });
 });
 
+describe("How to Play's controls", () => {
+  const KEYS = ['W', 'A', 'S', 'D', 'E', 'Enter', 'Click', 'Space', 'Shift', 'Tab', 'Esc', 'Wheel', 'Touch'];
+
+  it('tells touch players about touch, with no key or mouse in sight', () => {
+    const list = controlsList(true);
+    for (const c of list) {
+      for (const k of c.keys) expect(KEYS, k).not.toContain(k);
+      expect(c.text, c.text).not.toMatch(/\bkeys?\b|mouse|click|tablet|\bEsc\b|\bTab\b/i);
+    }
+    const all = list.map((c) => `${c.keys.join(' ')} ${c.text}`).join('\n');
+    // moving, looking, tapping things open, the Slide and pause buttons
+    for (const bit of [/left side.*waddle/, /right side.*look around/, /Tap.*cracker, present, candy cane or tree/, /Slide button/, /pause button/]) {
+      expect(all).toMatch(bit);
+    }
+  });
+
+  it('keeps the keys for keyboards, without the "on a tablet" line', () => {
+    const list = controlsList(false);
+    expect(list[0].keys).toEqual(['W', 'A', 'S', 'D']);
+    for (const c of list) {
+      expect(c.keys).not.toContain('Touch');
+      expect(c.text).not.toMatch(/tablet/);
+    }
+    for (const k of ['E', 'Tab', 'Esc']) expect(list.some((c) => c.keys.includes(k)), k).toBe(true);
+  });
+
+  // a screen reader skips a chip whose words already name the button
+  it('keeps quiet only the touch chips that the words repeat', () => {
+    const quiet = controlsList(true).filter((c) => c.quiet);
+    expect(quiet.map((c) => c.keys[0])).toEqual(['Slide', '⏸']);
+    for (const c of quiet) expect(c.text).toMatch(/Slide button|pause button/);
+    expect(controlsList(false).some((c) => c.quiet)).toBe(false);
+  });
+});
+
 describe('the new lines', () => {
   it('have their styles', () => {
-    for (const cls of ['.scr-jokenews', '.scr-jokenews--full', '.scr-nextboxes', '.scr-grid__more', '.scr-ticket__done']) {
+    for (const cls of ['.scr-jokenews', '.scr-jokenews--full', '.scr-nextboxes', '.scr-grid__more', '.scr-ticket__done', '.scr-foot--nohint', '.scr-tile--lilac']) {
       expect(css, cls).toContain(`${cls} {`);
     }
+  });
+});
+
+// The block a media query wraps, found by its exact header ('' if none).
+function mediaBlock(text, header) {
+  const start = text.indexOf(`${header} {`);
+  if (start < 0) return '';
+  let depth = 0;
+  for (let i = text.indexOf('{', start); i < text.length; i++) {
+    if (text[i] === '{') depth++;
+    else if (text[i] === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return '';
+}
+
+describe('phones held sideways (short screens)', () => {
+  const SHORT = '@media (max-height: 540px)';
+  const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+
+  it('scroll a page as one, its buttons pinned to the bottom', () => {
+    const short = mediaBlock(css, SHORT);
+    expect(short).toMatch(/\.scr-page \{\s*max-height: none;/);
+    expect(short).toMatch(/\.scr-body \{[^}]*overflow: visible;/);
+    expect(short).toMatch(/\.scr-foot \{[^}]*position: sticky;[^}]*bottom: (0|-1px);/);
+  });
+
+  it("switch at the HUD's compact breakpoint", () => {
+    expect(read('../src/ui/hud.css')).toContain('(max-height: 540px)');
+  });
+
+  it("stop the Workshop's own height cap where the whole screen scrolls instead", () => {
+    expect(read('../src/ui/screens.js')).toContain('@media (min-height: 541px) and (max-height: 700px)');
+  });
+
+  it('keep the joke card inside the screen, its words scrolling if they must', () => {
+    const short = mediaBlock(read('../src/ui/popups.css'), SHORT);
+    expect(short).toMatch(/\.pp-joke \{[^}]*max-height: 100%;/);
+    expect(short).toMatch(/\.pp-slip \{[^}]*overflow-y: auto;/);
+  });
+
+  // A short upright window (a phone with its toolbars showing, split screen)
+  // is too narrow for things side by side: the pause menu's buttons ran off
+  // the edge and the advent doors shrank to slivers there.
+  it('put things side by side only when the screen is wide too', () => {
+    const WIDE = '@media (max-height: 540px) and (min-width: 560px)';
+    const sideBySide = [
+      [css, /\.scr--pause \.scr-card \{/],
+      [css, /\.scr-advent \.scr-page \{/],
+      [css, /\.scr-title__row \{/],
+      [css, /\.scr-help__intro \{[^}]*flex-direction: row;/],
+      [css, /\.scr-fb__fields \{/],
+      [read('../src/ui/popups.css'), /\.pp-unlock \{/],
+    ];
+    for (const [text, rule] of sideBySide) {
+      expect(mediaBlock(text, SHORT)).not.toMatch(rule);
+      expect(mediaBlock(text, WIDE)).toMatch(rule);
+    }
+    expect(css).toContain(`${WIDE} and (max-width: 640px) {`);
+  });
+
+  // Stamps that sat in a corner covered words once the corner moved in.
+  it("keep Results' line clear of the map stamp in the corner", () => {
+    const narrow = mediaBlock(css, '@media (max-height: 540px) and (min-width: 560px) and (max-width: 760px)');
+    expect(narrow).toMatch(/\.scr-results \.scr-head \.scr-sub \{\s*padding-inline: 120px;/);
+  });
+
+  it("let a Secret Note's TOP SECRET stamp follow the words when the slip scrolls", () => {
+    const short = mediaBlock(read('../src/ui/popups.css'), SHORT);
+    expect(short).toMatch(/\.pp-stamp \{[^}]*position: static;/);
   });
 });

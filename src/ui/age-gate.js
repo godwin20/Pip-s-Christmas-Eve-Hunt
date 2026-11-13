@@ -60,6 +60,17 @@ export function ageCheck(month, year, now = new Date(), minAge = GATE_MIN_AGE) {
   return today >= grownUp ? 'pass' : 'fail';
 }
 
+// A month and year that haven't come yet are no birth date at all, so the
+// gate asks again instead of answering (the year list starts at this year,
+// where a slip of the finger lands). This month has come. Anything else,
+// picked or not, is for ageCheck to judge.
+export function notYetBorn(month, year, now = new Date()) {
+  const m = whole(month);
+  const y = whole(year);
+  if (m === null || m < 1 || m > 12 || y === null) return false;
+  return y * 12 + m - 1 > now.getFullYear() * 12 + now.getMonth();
+}
+
 // A pass read back from sessionStorage. One further ahead than one window
 // can't be ours, so it counts for nothing.
 export function passUntil(raw, now = Date.now()) {

@@ -95,7 +95,7 @@ app is a bonus, not a blocker.
 | Done, Tue 3 Nov | Everything new went live on the web: candy, pets, baubles, rainbow crackers, the upgrade changes and 200 jokes, with the Firestore rules deployed first | ASSISTANT |
 | By Sun 8 Nov | Read the 98 new jokes, live since 3 Nov. To change one, keep its id (`testers.md`, section 5) | OWNER |
 | By Fri 13 Nov | 12th tester opted in. Note the date | OWNER, testers |
-| About Mon 16 Nov (opt-in date + 3) | Version 2: the first fixes from testers on the web, then a version 2 bundle on the closed track (`testers.md`, section 5) | ASSISTANT, OWNER |
+| Web side done Fri 13 Nov; bundle by about Mon 16 Nov (opt-in date + 3) | Version 2: the fixes from PrimeTestLab's report went live on the web on 13 Nov; next, a version 2 bundle on the closed track (`testers.md`, section 5) | ASSISTANT, OWNER |
 | About Fri 20 Nov | The check a week in: opted-in testers, active devices, feedback | OWNER |
 | Mon 23 Nov at the latest (opt-in date + 10), once version 2's review has finished | Version 3: more fixes for what testers reported, on the web, then a version 3 bundle on the closed track | ASSISTANT, OWNER |
 | Opt-in date + 14 days, Fri 27 Nov | Phase 7: apply for production on day 14, since PrimeTestLab's testers stay 20 days (review usually 7 days or less) | OWNER |

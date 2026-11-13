@@ -372,6 +372,10 @@ the answer. The gate does that (`src/ui/age-gate.js` holds the pure parts,
   answer either.
 - **Continue with a blank** asks "Please pick a month and a year." and puts
   focus on the first blank select.
+- **A month still to come** (the year list starts at this year, so a slip of
+  the finger can pick one) is no birth date: "That date hasn't happened yet.
+  Please pick again." (`notYetBorn`). The picks stay to change, and nothing is
+  kept. This month counts as a birth date.
 - **18 or over passes** (`GATE_MIN_AGE`). Only the month and year are asked,
   so the birthday counts from the 1st of the month after the birth month: on
   30 October 2026, October 2008 doesn't pass yet and September 2008 does. A
@@ -423,8 +427,11 @@ unproven (it reportedly worked with the default `*.firebaseapp.com`
   offers "Try again" (a second popup cancels the first silently).
 - The account card says the app keeps its own save, that signing in here too
   brings a Google account's progress across, and to keep playing in Safari if
-  signing in doesn't finish here. Safari's week-long note is left out there
-  (Home Screen apps are exempt).
+  signing in doesn't finish here. The week-long note is left out there (Home
+  Screen apps are exempt). It shows in every browser on iPhone and iPad
+  (`isIOS()`, but not an app's own browser), because Chrome, Firefox and Edge
+  there run on Safari's engine with the same tracking prevention: never on
+  Android or a computer.
 - **Before release, try it on a real iPhone and iPad** (Home Screen app, guest
   link and the "account already exists" switch). If the result never comes
   back, treat `pwa.separateAppStorage` like an in-app browser in screens.js:

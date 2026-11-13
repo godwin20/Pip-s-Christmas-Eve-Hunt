@@ -29,6 +29,14 @@ Then open http://localhost:5173.
 On touch screens: drag on the left side to move, drag on the right to look,
 tap to open things, and use the on-screen Pause and Slide buttons.
 
+Android's Back button (and a browser's Back) does what the screen's own Back
+button does: it pauses a night, closes a card, and leaves the game from the
+title (`src/core/back.js`). Chrome only keeps history entries a page adds after
+a real tap or key press (not a swipe), so the game adds five at a time, enough
+for several Backs in a row, and tops them up on the next tap; only a sixth Back
+in a row with no tap at all leaves mid-game. Firefox has its own rule, so there
+the game keeps one entry and puts it back after every Back.
+
 ## Install as an app
 
 The game can be installed like an app: it opens full screen from the home

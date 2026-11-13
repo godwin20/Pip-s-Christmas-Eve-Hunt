@@ -12,6 +12,7 @@ import {
   BIRTH_MONTHS,
   birthYears,
   ageCheck,
+  notYetBorn,
   passUntil,
   lockUntil,
   gateStep,
@@ -128,6 +129,49 @@ describe('ageCheck', () => {
   it('uses the threshold it is given', () => {
     expect(ageCheck('9', '2013', TODAY, 13)).toBe('pass');
     expect(ageCheck('10', '2013', TODAY, 13)).toBe('fail');
+  });
+});
+
+describe('notYetBorn', () => {
+  it('lets this month count as a birth date', () => {
+    expect(notYetBorn('10', '2026', TODAY)).toBe(false);
+    expect(notYetBorn(10, 2026, TODAY)).toBe(false);
+    // so it is answered as a very young child, as before
+    expect(ageCheck('10', '2026', TODAY)).toBe('fail');
+  });
+
+  it('turns away next month, which has not happened yet', () => {
+    expect(notYetBorn('11', '2026', TODAY)).toBe(true);
+    expect(notYetBorn('12', '2026', TODAY)).toBe(true);
+    expect(notYetBorn(11, 2026, TODAY)).toBe(true);
+  });
+
+  it('turns away a year still to come, whatever the month', () => {
+    expect(notYetBorn('1', '2027', TODAY)).toBe(true);
+    expect(notYetBorn('1', '2030', TODAY)).toBe(true);
+  });
+
+  it('lets earlier dates through, to ageCheck', () => {
+    expect(notYetBorn('9', '2026', TODAY)).toBe(false);
+    expect(notYetBorn('12', '2025', TODAY)).toBe(false);
+    expect(notYetBorn('6', '1985', TODAY)).toBe(false);
+  });
+
+  it('follows the clock over New Year', () => {
+    expect(notYetBorn('12', '2026', new Date(2026, 11, 31, 23, 59))).toBe(false);
+    expect(notYetBorn('1', '2027', new Date(2026, 11, 31, 23, 59))).toBe(true);
+    expect(notYetBorn('1', '2027', new Date(2027, 0, 1, 0, 0))).toBe(false);
+    expect(notYetBorn('2', '2027', new Date(2027, 0, 1, 0, 0))).toBe(true);
+  });
+
+  it('leaves blanks and values the selects never offer to ageCheck', () => {
+    for (const [month, year] of [['', ''], ['11', ''], ['', '2027'], ['13', '2027'], ['0', '2027'], ['May', '2027'], ['11', 'abc']]) {
+      expect(notYetBorn(month, year, TODAY), `${month}/${year}`).toBe(false);
+    }
+    for (const v of [{}, [], () => 1, Symbol('x'), NaN, Infinity, true, null, undefined]) {
+      expect(() => notYetBorn(v, v, TODAY)).not.toThrow();
+      expect(notYetBorn(v, '2027', TODAY)).toBe(false);
+    }
   });
 });
 

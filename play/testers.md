@@ -304,11 +304,11 @@ upload the bundle, because it needs your keystore passwords.
    no address bar, and the game opens.
 6. **Put the same bundle on the closed test.** **Create new release** on the
    same track, add it from the app bundle library, and write release notes that
-   say what changed in plain words. Version 2 (187 / 500 before any fixes are
-   added in front):
+   say what changed in plain words. Version 2 (481 / 500), with the fixes from
+   PrimeTestLab's report that went live on the web on Fri 13 Nov:
 
    ```text
-   Version 2: candy canes and pets to feed, baubles for your own Christmas tree, rainbow crackers with Santa's Secret Notes, and 200 jokes to collect. An advent calendar opens on 1 December.
+   Version 2: fixes from tester feedback. Back now pauses the game and closes menus instead of closing the app. Phones get touch controls in How to Play and no keyboard hints. Screens fit when the phone is held sideways. The age check no longer takes future dates, and Results count candy. Also in the game: candy canes and pets to feed, baubles for your own Christmas tree, rainbow crackers with Santa's Secret Notes, and 200 jokes to collect. An advent calendar opens on 1 December.
    ```
 
    Version 3:

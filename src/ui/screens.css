@@ -752,6 +752,12 @@
   padding-right: 132px;
 }
 
+/* touch screens get no hint (screens.js), so nothing to keep free */
+.scr-foot--nohint {
+  padding-left: 22px;
+  padding-right: 22px;
+}
+
 .scr-empty {
   margin: 4px 0 0;
   color: var(--ink-soft);
@@ -2565,9 +2571,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* crackers, presents, coins and candy: the HUD's four counters */
 .scr-tiles {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin: 8px 0 16px;
 }
@@ -2596,6 +2603,9 @@
 .scr-tile:nth-child(3) {
   rotate: -0.6deg;
 }
+.scr-tile:nth-child(4) {
+  rotate: 1.2deg;
+}
 
 .scr-tile--red {
   background: linear-gradient(#fff, #ffe3e7);
@@ -2606,6 +2616,9 @@
 .scr-tile--gold {
   background: linear-gradient(#fff, var(--butter));
 }
+.scr-tile--lilac {
+  background: linear-gradient(#fff, var(--lilac));
+}
 
 .scr-tile__icon {
   display: grid;
@@ -2615,7 +2628,8 @@
   line-height: 1;
 }
 
-.scr-tile__icon .scr-coin {
+.scr-tile__icon .scr-coin,
+.scr-tile__icon .scr-sweet {
   width: 2.3rem;
   height: 2.3rem;
   font-size: 2rem;
@@ -2647,6 +2661,14 @@
   margin-top: 3px;
   color: var(--ink-soft);
   font-size: 0.82rem;
+}
+
+/* four across need about 110px each ("+185" and its "Purse:" line), so a
+   phone held upright takes them two by two */
+@media (max-width: 560px) {
+  .scr-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 /* Gallery news: every 25 jokes, and the very last one */
@@ -6746,7 +6768,8 @@ p .scr-key {
     height: 2rem;
   }
 
-  .scr-tile__icon .scr-coin {
+  .scr-tile__icon .scr-coin,
+  .scr-tile__icon .scr-sweet {
     width: 1.7rem;
     height: 1.7rem;
     font-size: 1.5rem;
@@ -7112,6 +7135,439 @@ p .scr-key {
 
   .scr--pause .scr-banner--small {
     margin-bottom: 12px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phones held sideways (and other windows under ~540px tall: hud.css's compact
+   breakpoint). A page's own scrolling body would be a strip one or two rows
+   tall between its header and its buttons, so here the page grows to its full
+   height and the whole screen scrolls as one instead. The header scrolls away
+   with the content; the buttons stay pinned along the bottom, compact, so
+   Back or Next Night is always one tap away. scroll-padding keeps whatever a
+   scrollIntoView() brings up (today's door, the sign-in form, the tree's
+   shelf) clear of those buttons.
+   --------------------------------------------------------------------------- */
+@media (max-height: 540px) {
+  .scr-stage {
+    padding-top: 6px;
+    padding-bottom: 0;
+    scroll-padding: 8px 0 70px;
+  }
+
+  .scr-page {
+    max-height: none;
+  }
+
+  .scr-head {
+    gap: 4px;
+    padding-bottom: 4px;
+  }
+
+  .scr-banner {
+    font-size: 1.45rem;
+  }
+
+  .scr-sub {
+    margin-top: 2px;
+    font-size: 0.95rem;
+  }
+
+  /* the corner stickers stay above the tabs that now sit closer */
+  .scr-page > .scr-purse {
+    top: -22px;
+    padding: 4px 14px 4px 8px;
+    font-size: 1.15rem;
+  }
+
+  .scr-body {
+    flex: none;
+    overflow: visible;
+    padding-top: 4px;
+    padding-bottom: 14px;
+  }
+
+  /* pinned to the bottom of the screen; its paper hides the page scrolling
+     under it, and it keeps inside the page's stitched border. (-1px: at a
+     part-pixel scroll, a 0 left a hairline of the page showing under it.) */
+  .scr-foot {
+    position: sticky;
+    bottom: -1px;
+    z-index: 3;
+    gap: 8px;
+    margin: 0 11px;
+    padding-top: 7px;
+    padding-bottom: 8px;
+    background: var(--paper);
+    box-shadow: 0 -10px 12px -12px rgba(42, 27, 61, 0.5);
+  }
+
+  .scr-foot--nohint {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  .scr-foot .scr-btn {
+    min-height: 42px;
+    padding: 0.4em 1.1em 0.45em;
+    font-size: 1rem;
+  }
+
+  .scr-foot .scr-btn--big {
+    min-height: 46px;
+    font-size: 1.12rem;
+  }
+
+  /* Results: the four totals, snugger, all in the first screenful */
+  .scr-tiles {
+    gap: 10px;
+    margin: 4px 0 12px;
+  }
+
+  .scr-tile {
+    padding: 8px 6px 9px;
+  }
+
+  .scr-tile__icon {
+    height: 2rem;
+    font-size: 1.7rem;
+  }
+
+  .scr-tile__icon .scr-coin,
+  .scr-tile__icon .scr-sweet {
+    width: 1.8rem;
+    height: 1.8rem;
+    font-size: 1.6rem;
+  }
+
+  .scr-tile__num {
+    font-size: 2rem;
+  }
+
+  .scr-tile__label {
+    font-size: 0.82rem;
+    text-align: center;
+  }
+
+  .scr-tile__extra {
+    margin-top: 1px;
+    font-size: 0.74rem;
+  }
+
+  .scr-results .scr-foot .scr-btn {
+    padding-left: 0.9em;
+    padding-right: 0.9em;
+  }
+
+  /* no Esc hint shows beside these (touch has none, and four buttons hide
+     it), so no room is kept for one: they share one row from 740px wide */
+  .scr-results--cloud .scr-foot,
+  .scr-results .scr-foot--nohint {
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+
+  /* a second row of buttons where they don't */
+  .scr--results .scr-stage {
+    scroll-padding-bottom: 124px;
+  }
+
+  /* Leaderboard: more rows to a screenful */
+  .scr-lbbook .scr-sub {
+    display: none;
+  }
+
+  .scr-lbbook .scr-tab {
+    min-height: 38px;
+    padding: 4px 14px;
+    font-size: 0.98rem;
+  }
+
+  .scr-lb__heading {
+    margin-bottom: 8px;
+    font-size: 1.15rem;
+  }
+
+  /* the board's one-line blurb beside its name, not under it */
+  .scr-lb__heading small {
+    flex-basis: auto;
+    padding-top: 0.2em;
+  }
+
+  .scr-lb__list {
+    gap: 7px;
+  }
+
+  .scr-lbrow {
+    min-height: 46px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+
+  .scr-lbrow__score {
+    line-height: 1;
+  }
+
+  .scr-lbrow__medal {
+    font-size: 1.6rem;
+  }
+
+  /* How to Play: snugger notes */
+  .scr-help__intro {
+    padding-bottom: 8px;
+  }
+
+  .scr-help__intro p {
+    font-size: 1rem;
+    line-height: 1.4;
+  }
+
+  .scr-help__pip {
+    font-size: 6.5px;
+  }
+
+  .scr-notes {
+    gap: 18px 14px;
+  }
+
+  .scr-note {
+    padding: 16px 14px 10px;
+  }
+
+  .scr-keys {
+    gap: 7px;
+  }
+
+  .scr-key {
+    height: 26px;
+  }
+
+  /* the whole tree fits above the buttons, but never so small that its
+     40px spots crowd each other (that takes 260px across) */
+  .scr-xtree__tree {
+    max-width: max(260px, min(330px, calc((100vh - 96px) * 300 / 340)));
+    max-width: max(260px, min(330px, calc((100dvh - 96px - var(--safe-top) - var(--safe-bottom)) * 300 / 340)));
+  }
+}
+
+/* The side-by-side layouts are for short screens with room across: phones
+   held sideways. A short upright window (a phone with its toolbars showing,
+   split screen, a small pop-up window) keeps the stacked layouts, which fit
+   its width, and still gets the whole-screen scroll and pinned buttons above. */
+@media (max-height: 540px) and (min-width: 560px) {
+  /* How to Play: a smaller Pip beside the welcome */
+  .scr-help__intro {
+    flex-direction: row;
+    text-align: left;
+  }
+
+  /* Advent: the speech bubble beside the doors rather than above them. It
+     says what a door held, so it stays in view (sticky) while the doors
+     scroll. The banner and the buttons still span the page. */
+  .scr-advent {
+    width: min(900px, 100%);
+  }
+
+  .scr-advent .scr-page {
+    display: grid;
+    grid-template-columns: minmax(170px, 2fr) minmax(0, 3fr);
+  }
+
+  .scr-advent .scr-head {
+    display: contents;
+  }
+
+  .scr-advent .scr-banner {
+    grid-area: 1 / 1 / 2 / 3;
+    justify-self: center;
+  }
+
+  .scr-advent .scr-advent__say {
+    grid-area: 2 / 1;
+    position: sticky;
+    top: 10px;
+    align-self: start;
+    flex-direction: column;
+    gap: 6px;
+    width: auto;
+    min-height: 0;
+    margin: 10px 0 14px 22px;
+    padding: 10px 12px 12px;
+    text-align: center;
+  }
+
+  .scr-advent .scr-advent__words {
+    align-items: center;
+  }
+
+  .scr-advent .scr-body {
+    grid-area: 2 / 2;
+    padding-left: 18px;
+  }
+
+  .scr-advent .scr-foot {
+    grid-area: 3 / 1 / 4 / 3;
+  }
+
+  /* six across and four down, sized so all 24 doors fit above the buttons */
+  .scr-advent .scr-advent__doors {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    max-width: calc((100vh - 142px) * 1.5);
+    max-width: calc((100dvh - 142px - var(--safe-top) - var(--safe-bottom)) * 1.5);
+    margin: 0 auto;
+  }
+
+  /* Pause: sleepy Pip and the ribbon beside the buttons, so the card fits
+     under the HUD's timer without scrolling */
+  .scr--pause .scr-stage {
+    padding-top: calc(var(--hud-clear) - 6px);
+    padding-bottom: 8px;
+  }
+
+  .scr--pause .scr-pausewrap {
+    width: min(600px, 100%);
+    padding-top: 0;
+  }
+
+  .scr--pause .scr-card {
+    display: grid;
+    grid-template-columns: minmax(140px, 0.75fr) minmax(0, 1.5fr);
+    grid-template-rows: 1fr auto 1fr;
+    column-gap: 16px;
+    width: 100%;
+    padding: 12px 16px 12px 12px;
+  }
+
+  .scr--pause .scr-pause__art {
+    grid-area: 1 / 1;
+    align-self: end;
+    height: 96px;
+    margin-top: 0;
+  }
+
+  .scr--pause .scr-zzz {
+    top: 4px;
+  }
+
+  .scr--pause .scr-banner--small {
+    grid-area: 2 / 1;
+    justify-self: center;
+    margin: 6px 0 0;
+    font-size: 1.35rem;
+  }
+
+  .scr--pause .scr-stack {
+    grid-area: 1 / 2 / 4 / 3;
+    align-self: center;
+    gap: 7px;
+  }
+
+  /* Joke Gallery and How to Play side by side, even on a 640px phone */
+  .scr--pause .scr-stack__row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .scr--pause .scr-stack .scr-btn,
+  .scr--pause .scr-toggles--compact .scr-toggle {
+    min-height: 38px;
+  }
+
+  .scr--pause .scr-stack .scr-btn--big {
+    min-height: 48px;
+  }
+
+  .scr--pause .scr-card .scr-hint {
+    grid-area: 3 / 1;
+    align-self: start;
+  }
+
+  /* Feedback: wider, with the stars and the topic side by side, so there is
+     less of it to scroll */
+  .scr-fb {
+    width: min(760px, 100%);
+  }
+
+  .scr-fb__fields {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .scr-fb__fields > :nth-child(n + 3) {
+    grid-column: 1 / -1;
+  }
+
+  /* Title: the scene and the menu side by side at every sideways size, with
+     a smaller logo above, so the whole menu shows */
+  .scr-title {
+    gap: 6px;
+  }
+
+  .scr-logo__main {
+    padding-bottom: 6px;
+    font-size: clamp(2rem, 5.4vw, 3.2rem);
+  }
+
+  .scr-logo__ribbon {
+    font-size: clamp(1.05rem, 2.6vw, 1.4rem);
+  }
+
+  .scr-title__row {
+    flex-wrap: nowrap;
+    gap: 8px 18px;
+  }
+
+  .scr-title__art {
+    flex: 1 1 300px;
+  }
+
+  .scr-title .scr-scene {
+    height: 150px;
+    scale: 0.8;
+    transform-origin: 50% 100%;
+  }
+
+  .scr-menu {
+    flex: none;
+    width: 290px;
+    gap: 7px;
+  }
+
+  .scr-menu .scr-btn {
+    min-height: 40px;
+  }
+
+  .scr-menu .scr-btn--big {
+    min-height: 48px;
+  }
+}
+
+/* Short and narrow (640x360): the corner stickers stay in their corners,
+   where there is room beside the shorter banner, rather than taking a row of
+   their own. The Workshop's purse is too wide for that and stays in line. */
+@media (max-height: 540px) and (min-width: 560px) and (max-width: 640px) {
+  .scr-page > .scr-stamp-seed,
+  .scr-advent .scr-page > .scr-purse {
+    position: absolute;
+    top: -20px;
+    right: 18px;
+    margin: 0;
+  }
+
+  .scr-page > .scr-stamp-seed {
+    rotate: 7deg;
+  }
+
+  .scr-advent .scr-page > .scr-purse {
+    rotate: 3deg;
+  }
+}
+
+/* Up to here (and a little wider) the night's line under Results' banner is
+   long enough to run under the map stamp in the corner, so it keeps clear of
+   it on both sides, staying centred, and wraps sooner instead. */
+@media (max-height: 540px) and (min-width: 560px) and (max-width: 760px) {
+  .scr-results .scr-head .scr-sub {
+    padding-inline: 120px;
   }
 }
 

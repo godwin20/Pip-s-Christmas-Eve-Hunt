@@ -20,8 +20,8 @@ import { ADJECTIVES, NOUNS, isValidNameParts, nameFromParts, randomNameParts } f
 import { PRIVACY_CONTACT } from '../cloud/config.js';
 import { PRIVACY_FACTS, DELETE_FACTS, POLICY_PAGE, deleteWords } from './privacy-text.js';
 import { FEEDBACK_CATEGORIES, FEEDBACK_QUICK, FEEDBACK_QUICK_MAX, FEEDBACK_COMMENT_MAX, cleanSeed } from '../cloud/feedback.js';
-import { isInAppBrowser, isIPad } from '../core/pwa.js';
-import { BIRTH_MONTHS, birthYears, ageCheck, passUntil, lockUntil, gateStep, gateOutcome, GATE_PASS_KEY, GATE_LOCK_KEY } from './age-gate.js';
+import { isInAppBrowser, isIOS, isIPad } from '../core/pwa.js';
+import { BIRTH_MONTHS, birthYears, ageCheck, notYetBorn, passUntil, lockUntil, gateStep, gateOutcome, GATE_PASS_KEY, GATE_LOCK_KEY } from './age-gate.js';
 
 // ---------------------------------------------------------------------------
 // Static data
@@ -59,7 +59,7 @@ const SHOP_TABS = [
 const PET_CRIES = { puppy: 'bark', kitten: 'meow', reindeer: 'bleat', penguin: 'cheep' };
 
 // Matches main.js / input.js: slide = Space or left Shift, interact = E /
-// Enter / click, Tab = peek at the Gallery, touch = left-side joystick.
+// Enter / click, Tab = peek at the Gallery.
 const DEFAULT_CONTROLS = [
   { keys: ['W', 'A', 'S', 'D'], text: 'or the arrow keys to waddle about' },
   { keys: ['Drag'], text: 'the mouse (or a finger) to look around' },
@@ -68,8 +68,26 @@ const DEFAULT_CONTROLS = [
   { keys: ['Space', 'Shift'], text: 'hold while moving to belly-slide! Wheee!' },
   { keys: ['Tab'], text: 'to peek at your Joke Gallery' },
   { keys: ['Esc'], text: 'to pause the night' },
-  { keys: ['Touch'], text: 'the left side of the screen to waddle on a tablet' },
 ];
+
+// The same on a touch screen (input.js and hud.js): a finger that starts on
+// the left part of the screen is a joystick, one anywhere else looks around,
+// two pinch, and a quick tap anywhere is the E key. The HUD's Slide and pause
+// buttons do the rest, and the Gallery is on the pause menu.
+const TOUCH_CONTROLS = [
+  { keys: ['Drag'], text: 'a finger on the left side of the screen to waddle about' },
+  { keys: ['Drag'], text: 'on the right side to look around' },
+  { keys: ['Pinch'], text: 'with two fingers to zoom in and out' },
+  { keys: ['Tap'], text: 'when Pip is next to a cracker, present, candy cane or tree to pull, open, crack or shake it' },
+  // (quiet: the words name the same button, so a screen reader says it once)
+  { keys: ['Slide'], text: 'hold the Slide button while moving to belly-slide! Wheee!', quiet: true },
+  { keys: ['⏸'], text: 'tap the pause button at the top right to pause the night or visit your Joke Gallery', quiet: true },
+];
+
+// How to Play's Controls card: touch, or keys and the mouse.
+export function controlsList(touch) {
+  return touch ? TOUCH_CONTROLS : DEFAULT_CONTROLS;
+}
 
 const CARD_TINTS = ['mint', 'blush', 'butter', 'sky', 'lilac'];
 const BURST_CHARS = ['✦', '★', '❄', '✧', '●'];
@@ -139,7 +157,7 @@ const REAUTH_LABEL = 'Confirm with Google to finish deleting';
 const REAUTH_CLOSED = "The Google window closed, so the Google sign-in is still here. Press the button again when you're ready.";
 const REAUTH_WRONG = "That's a different Google account. Please pick the one you signed in to the game with.";
 const IN_APP_TEXT = 'To sign in with Google, open this game in Safari or Chrome.';
-const SAFARI_GUEST_TEXT = "On iPhone and iPad, Safari may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.";
+const IOS_GUEST_TEXT = "On iPhone and iPad, the browser may clear a guest's progress after about a week of not playing. Sign in with Google to keep it.";
 // iPhone / iPad keep a Home Screen app's storage apart from Safari's tabs.
 // Only a Google account carries progress across, and Google sign-in inside a
 // Home Screen app is unproven on recent iOS, so the way back to Safari is
@@ -315,12 +333,10 @@ const EXTRA_CSS = `
       0 0 22px 8px rgba(255, 201, 74, 0.6);
   }
 }
-@media (max-height: 700px) {
-  .scr-shop .scr-sub {
-    display: none;
-  }
+@media (min-height: 541px) and (max-height: 700px) {
   /* 24 + 26 (book top) + page + 8 fits the window, so the overlay itself
-     never scrolls a few pixels under the page */
+     never scrolls a few pixels under the page (under 541px the whole screen
+     scrolls instead: screens.css) */
   .scr--shop .scr-stage {
     padding-top: 24px;
     padding-bottom: 8px;
@@ -328,6 +344,11 @@ const EXTRA_CSS = `
   .scr-shop .scr-page {
     max-height: calc(100vh - 60px);
     max-height: calc(100dvh - 60px - var(--safe-top) - var(--safe-bottom));
+  }
+}
+@media (max-height: 700px) {
+  .scr-shop .scr-sub {
+    display: none;
   }
   .scr-shop .scr-head {
     gap: 4px;
@@ -976,6 +997,16 @@ export function createScreens(root, deps = {}) {
       /* speech is optional */
     }
   };
+  // Touch or keys? main.js passes the HUD's touch mode (src/ui/hud.js): a
+  // phone or tablet, or a touch laptop last used with a finger. Key names and
+  // "Esc =" hints mean nothing there, so touch gets touch words instead.
+  const touch = () => {
+    try {
+      return deps.isTouch?.() === true;
+    } catch {
+      return false;
+    }
+  };
   // Game-state transitions (start, resume, quit…). Only one may fire within
   // 450 ms unless a new screen has been opened since, so a double-click can
   // never start two nights, while a fresh Pause opened right after a resume
@@ -1077,6 +1108,10 @@ export function createScreens(root, deps = {}) {
   // inside apps' own browsers (src/core/pwa.js), so those get a "use Safari
   // or Chrome" note instead of a button that can't work.
   const IN_APP = isInAppBrowser();
+  // IOS_GUEST_TEXT is about the week-long storage limit of Safari's engine,
+  // which every browser on iPhone / iPad runs on (Chrome, Firefox and Edge
+  // there too), so only those show it. Apps' own browsers have their own note.
+  const IOS_BROWSER = isIOS() && !IN_APP;
   // ---- PWA facade (src/core/pwa.js): optional, and every read is guarded ----
   const pwa = () => {
     try {
@@ -1382,6 +1417,16 @@ export function createScreens(root, deps = {}) {
     }
   }
 
+  // Android's Back button and a browser's (src/core/back.js) do what Esc
+  // does, wherever goBack() has something to do: anywhere but the plain
+  // title, where only an open question (the grown-ups gate, the feedback
+  // card, the reset or Home Screen steps) has.
+  function hasBack() {
+    if (state.current === null) return false;
+    if (state.current !== 'title') return true;
+    return !!(state.fb || gateHere('title') || state.homeHelp || state.confirmReset);
+  }
+
   function leaveShop() {
     if (state.shopBack === 'results' && state.lastSummary) renderResults(state.lastSummary, true);
     else showTitle();
@@ -1501,7 +1546,14 @@ export function createScreens(root, deps = {}) {
     );
   }
 
+  // "Esc = back" and the like: for keyboards only.
+  function keyHint(text) {
+    return touch() ? null : h('span', { class: 'scr-hint' }, text);
+  }
+
   function page({ cls = '', title, icon, sub, headExtra, corner }, body, foot) {
+    // without the hint, the foot needs no room kept free for it
+    const hint = foot ? keyHint('Esc = back') : null;
     return h(
       'div',
       { class: `scr-book ${cls}` },
@@ -1525,7 +1577,7 @@ export function createScreens(root, deps = {}) {
           headExtra || null
         ),
         h('div', { class: 'scr-body' }, body),
-        foot ? h('footer', { class: 'scr-foot' }, foot, h('span', { class: 'scr-hint' }, 'Esc = back')) : null
+        foot ? h('footer', { class: `scr-foot${hint ? '' : ' scr-foot--nohint'}` }, foot, hint) : null
       )
     );
   }
@@ -2365,6 +2417,15 @@ export function createScreens(root, deps = {}) {
         'scr-tile--gold',
         signed,
         h('span', { class: 'scr-tile__extra' }, 'Purse: ', coin(), ` ${fmt(save.coins)}`)
+      ),
+      // candy too, so the tiles match the HUD's four counters
+      tile(
+        h('span', { class: 'scr-sweet scr-sweet--big' }),
+        'candy collected',
+        s.candyEarned,
+        'scr-tile--lilac',
+        signed,
+        h('span', { class: 'scr-tile__extra' }, 'You have ', sweet(), ` ${fmt(save.candy)}`)
       )
     );
 
@@ -2386,15 +2447,14 @@ export function createScreens(root, deps = {}) {
       sections.push(h('div', { class: 'scr-record' }, h('span', { 'aria-hidden': 'true' }, '⭐'), ' Your best night yet! ', h('span', { 'aria-hidden': 'true' }, '⭐')));
     }
 
-    // Candy and baubles from tonight
-    if (s.candyEarned > 0 || s.newBaubles.length) {
+    // Baubles from tonight (candy has its tile)
+    if (s.newBaubles.length) {
       const baubles = s.newBaubles.length;
       sections.push(
         h(
           'div',
           { class: 'scr-treats' },
-          s.candyEarned > 0 ? h('span', null, h('span', { 'aria-hidden': 'true' }, '🍬 '), `+${fmt(s.candyEarned)} candy (you have ${fmt(save.candy)})`) : null,
-          baubles ? h('span', null, h('span', { 'aria-hidden': 'true' }, '🎄 '), baubles === 1 ? `New bauble: ${s.newBaubles[0].name}` : `${baubles} new baubles for your tree`) : null
+          h('span', null, h('span', { 'aria-hidden': 'true' }, '🎄 '), baubles === 1 ? `New bauble: ${s.newBaubles[0].name}` : `${baubles} new baubles for your tree`)
         )
       );
     }
@@ -4373,8 +4433,9 @@ export function createScreens(root, deps = {}) {
       h('p', { class: 'scr-lbacct__small' }, 'The leaderboard only ever shows the snow name, never a real name or email.'),
       signIn,
       note ? accountNote(note) : null,
-      // Safari's week-long limit doesn't apply to Home Screen apps
-      homeApp ? null : h('p', { class: 'scr-lbacct__small scr-lbacct__safari' }, SAFARI_GUEST_TEXT),
+      // the week-long limit: browsers on iPhone and iPad only, not their Home
+      // Screen apps (and never Android or a computer)
+      IOS_BROWSER && !homeApp ? h('p', { class: 'scr-lbacct__small scr-lbacct__safari' }, IOS_GUEST_TEXT) : null,
       accountLinks(lb),
     ];
   }
@@ -4659,11 +4720,20 @@ export function createScreens(root, deps = {}) {
       gateNotNow(g, ui);
       return;
     }
-    const result = ageCheck(g.month, g.year, new Date());
+    const now = new Date();
+    const result = ageCheck(g.month, g.year, now);
     if (result === 'missing') {
       g.msg = { tone: 'info', text: 'Please pick a month and a year.' };
       ui.render();
       ui.focus(g.month ? 'gate-year' : 'gate-month');
+      ui.say(g.msg.text);
+      return;
+    }
+    // a date still to come is a slip, not an age: the picks stay to change
+    if (notYetBorn(g.month, g.year, now)) {
+      g.msg = { tone: 'info', text: "That date hasn't happened yet. Please pick again.", both: true };
+      ui.render();
+      ui.focus('gate-month');
       ui.say(g.msg.text);
       return;
     }
@@ -4765,7 +4835,7 @@ export function createScreens(root, deps = {}) {
           class: 'scr-gate__pick',
           'data-key': `gate-${part}`,
           autocomplete: 'off',
-          'aria-invalid': g.msg && g.msg.tone === 'info' && !g[part] ? 'true' : null,
+          'aria-invalid': g.msg && g.msg.tone === 'info' && (!g[part] || g.msg.both) ? 'true' : null,
           'aria-describedby': g.msg ? msgId : null,
         },
         h('option', { value: '' }, label),
@@ -5860,7 +5930,7 @@ export function createScreens(root, deps = {}) {
           : null,
         quit
       ),
-      h('span', { class: 'scr-hint' }, 'Esc = resume')
+      keyHint('Esc = resume')
     );
     return h('div', { class: 'scr-pausewrap' }, card);
   }
@@ -5895,8 +5965,10 @@ export function createScreens(root, deps = {}) {
           ? `${mins} and a half minutes`
           : `${mins} minutes and ${secs} seconds`;
 
-    const controls = Array.isArray(deps.controls) && deps.controls.length ? deps.controls : DEFAULT_CONTROLS;
+    const tap = touch();
+    const controls = Array.isArray(deps.controls) && deps.controls.length ? deps.controls : controlsList(tap);
     const coins = RARITY_COINS || { common: 5, rare: 10, legendary: 25 };
+    const key = (k) => h('kbd', { class: 'scr-key' }, k);
 
     const note = (cls, icon, title, ...body) =>
       h(
@@ -5920,7 +5992,7 @@ export function createScreens(root, deps = {}) {
             null,
             h(
               'span',
-              { class: 'scr-keys__caps' },
+              { class: 'scr-keys__caps', 'aria-hidden': c.quiet ? 'true' : null },
               (Array.isArray(c.keys) ? c.keys : [String(c.keys || '')]).map((k) => h('kbd', { class: 'scr-key' }, k))
             ),
             h('span', { class: 'scr-keys__text' }, c.text || '')
@@ -5965,7 +6037,7 @@ export function createScreens(root, deps = {}) {
           '🎉',
           'Crackers',
           h('div', { class: 'scr-note__art', 'aria-hidden': 'true', html: crackerHTML() }),
-          h('p', null, 'Waddle up to a cracker and press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap. BANG! Out pops a joke for your Gallery, plus coins:'),
+          h('p', null, 'Waddle up to a cracker and ', tap ? 'tap' : ['press ', key('E'), ' or tap'], '. BANG! Out pops a joke for your Gallery, plus coins:'),
           h(
             'div',
             { class: 'scr-rarities' },
@@ -6010,13 +6082,23 @@ export function createScreens(root, deps = {}) {
           'scr-tint--sky',
           '🍬',
           'Candy and pets',
-          h('p', null, 'Press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap at a little candy cane in the snow, or belly-slide through it. Spend your candy in the Workshop on new pets, and feed them to make them better friends.')
+          h(
+            'p',
+            null,
+            tap ? 'Waddle up to a little candy cane in the snow and tap' : ['Press ', key('E'), ' or tap at a little candy cane in the snow'],
+            ', or belly-slide through it. Spend your candy in the Workshop on new pets, and feed them to make them better friends.'
+          )
         ),
         note(
           'scr-tint--butter',
           '🎄',
           'Baubles',
-          h('p', null, 'Press ', h('kbd', { class: 'scr-key' }, 'E'), ' or tap by a pine tree or a lollipop tree to shake it, or slide into it. Sometimes a bauble falls out! Hang your baubles on your tree in the Wardrobe.')
+          h(
+            'p',
+            null,
+            tap ? 'Waddle up to a pine tree or a lollipop tree and tap to shake it' : ['Press ', key('E'), ' or tap by a pine tree or a lollipop tree to shake it'],
+            ', or slide into it. Sometimes a bauble falls out! Hang your baubles on your tree in the Wardrobe.'
+          )
         ),
         isAdventTime(today())
           ? note('scr-tint--lilac', '🍫', 'Advent Calendar', h('p', null, 'Open a new door on the title screen every day in December. Missed one? It stays ready until the 31st.'))
@@ -6145,6 +6227,9 @@ export function createScreens(root, deps = {}) {
     refresh,
     cloudChanged,
     pwaChanged,
+    // Android's Back (src/core/back.js): what Esc does, and whether it does anything
+    back: goBack,
+    hasBack,
     destroy,
     el,
     get current() {

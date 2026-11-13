@@ -929,6 +929,204 @@
   }
 }
 
+/* Phones held sideways (under ~540px tall, hud.css's compact breakpoint): the
+   cards fit the screen with their buttons in view. The joke card grows wider
+   and its words a little smaller, so even the longest Secret Note fits; if the
+   words still can't, they scroll inside the paper slip while the buttons stay
+   put. Held sideways, the reward card puts its badge beside the words (the
+   next block). */
+@media (max-height: 540px) {
+  .pp-modal {
+    padding-top: calc(10px + var(--safe-top));
+    padding-bottom: calc(10px + var(--safe-bottom));
+  }
+
+  /* the joke card always fits (its words scroll instead), so only the
+     sparkles could hang over the edge: nothing to scroll to */
+  .pp-modal--joke {
+    overflow: hidden;
+  }
+
+  .pp-joke {
+    display: flex;
+    flex-direction: column;
+    width: min(680px, 100%);
+    max-height: 100%;
+    padding-top: 16px;
+  }
+
+  .pp-slip-wrap,
+  .pp-slip-frame {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+
+  .pp-slip {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 24px 30px 20px;
+  }
+
+  .pp-kind {
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .pp-q {
+    font-size: clamp(18px, 5.6vh, 24px);
+  }
+
+  .pp-a {
+    margin-top: 10px;
+    font-size: clamp(19px, 5.8vh, 25px);
+  }
+
+  .pp-kind-quote .pp-a {
+    margin-top: 8px;
+    font-size: 16px;
+  }
+
+  .pp-kind-secret .pp-q {
+    font-size: clamp(15px, 4.4vh, 18px);
+  }
+
+  .pp-kind-secret .pp-a {
+    margin-top: 8px;
+    font-size: clamp(16px, 5vh, 21px);
+  }
+
+  /* the slip scrolls here when a note is long, and a stamp pinned to its
+     corner would sit on the words: it follows the note instead */
+  .pp-kind-secret .pp-slip {
+    padding-bottom: 14px;
+  }
+
+  .pp-stamp {
+    position: static;
+    display: block;
+    width: fit-content;
+    margin: 6px 4px 0 auto;
+    font-size: 12px;
+  }
+
+  .pp-reveal {
+    margin-top: 12px;
+    padding: 7px 20px 6px;
+  }
+
+  .pp-actions,
+  .pp-reward {
+    flex: none;
+  }
+
+  .pp-actions {
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .pp-btn {
+    padding: 8px 18px;
+    font-size: 17px;
+  }
+
+  .pp-reward {
+    margin-top: 8px;
+  }
+
+  .pp-reward > span {
+    font-size: 16px;
+  }
+
+  .pp-sticker--new {
+    top: 4px;
+    right: -8px;
+    width: 72px;
+    height: 72px;
+  }
+
+  .pp-sticker--new > span {
+    font-size: 18px;
+  }
+}
+
+/* The reward card's badge beside its words needs room across: on a short
+   upright window (split screen, a small pop-up window) it stays stacked, and
+   its overlay scrolls if it must, as before. */
+@media (max-height: 540px) and (min-width: 560px) {
+  /* the reward card: badge on the left, words and Yay! on the right */
+  .pp-unlock {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 16px;
+    width: min(600px, 100%);
+    padding: 14px 20px 16px;
+  }
+
+  .pp-unlock > * {
+    grid-column: 2;
+  }
+
+  .pp-unlock-kicker,
+  .pp-unlock-count,
+  .pp-unlock .pp-btn--go {
+    justify-self: center;
+  }
+
+  .pp-unlock-badge {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    width: 124px;
+    height: 124px;
+    margin: 0;
+  }
+
+  .pp-unlock-rays {
+    inset: -26px;
+  }
+
+  .pp-unlock-disc {
+    width: 100px;
+    height: 100px;
+  }
+
+  .pp-unlock-icon {
+    font-size: 54px;
+  }
+
+  .pp-unlock-kicker {
+    font-size: 13px;
+  }
+
+  .pp-unlock-name {
+    margin: 8px 0 2px;
+    font-size: 25px;
+  }
+
+  .pp-unlock-desc {
+    margin-bottom: 8px;
+    font-size: 16px;
+  }
+
+  .pp-unlock-count {
+    font-size: 14px;
+  }
+
+  .pp-unlock-tip {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+
+  .pp-unlock .pp-btn--go {
+    margin-top: 10px;
+    padding: 8px 30px;
+    font-size: 19px;
+  }
+}
+
 /* Touch screens: key hints ("E", "or press E") are only for keyboards. */
 #hud:has(.pip-hud.is-touch) ~ #popups .pp-key,
 #hud:has(.pip-hud.is-touch) ~ #popups .pp-reveal small {

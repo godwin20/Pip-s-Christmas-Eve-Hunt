@@ -223,6 +223,16 @@ export function createPopups(root, sfx) {
     return !!current || queue.length > 0;
   }
 
+  // Android's Back button (src/core/back.js): what Escape does to the open
+  // card, which is what its Next / Yay button does. Like a key, it waits out
+  // the first moment, so a quick second Back can't skip the next card unseen.
+  // Answers whether it closed one.
+  function back() {
+    if (!current || current.closing || now() - current.openedAt < GRACE_MS) return false;
+    current.onKey('close');
+    return true;
+  }
+
   // Resolves (with null) every card still waiting in the queue.
   function dropQueue() {
     const pending = queue.splice(0, queue.length);
@@ -529,6 +539,7 @@ export function createPopups(root, sfx) {
     showUnlock,
     isModalOpen,
     closeModal,
+    back,
     // extras
     closeAll,
     dispose,

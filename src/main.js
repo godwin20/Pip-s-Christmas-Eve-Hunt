@@ -37,6 +37,7 @@ import { createScreens } from './ui/screens.js';
 import { createCloud } from './cloud/cloud.js';
 import { ensureProfile } from './cloud/merge.js';
 import { createPwa } from './core/pwa.js';
+import { createBackGuard } from './core/back.js';
 import { showGlNote } from './ui/glnote.js';
 
 // Dev server only: Vite turns import.meta.env.DEV into `false` in production
@@ -127,6 +128,23 @@ player.onBonk = () => {
 const hud = createHud(document.getElementById('hud'));
 const radar = createRadar(hud.radarCanvas);
 radar.onPing = () => sfx.play('blip');
+// Android's Back button (and a browser's): past the title it does what the
+// screen's own Back, close or pause button does, instead of closing the game
+// (src/core/back.js). frame() keeps its history entries in step. Made before
+// the popups and screens so it hears every tap and key first (a card's keys
+// stop at the popups); read() and act() only run once the game is going.
+const backGuard = createBackGuard({
+  read: () => ({
+    card: popups.isModalOpen(),
+    menu: screens.hasBack(),
+    playing: state === 'playing',
+  }),
+  act: (action) => {
+    if (action === 'card') popups.back();
+    else if (action === 'menu') screens.back();
+    else if (action === 'pause') pause();
+  },
+});
 const popups = createPopups(document.getElementById('popups'), sfx);
 
 const ctx = {
@@ -222,6 +240,8 @@ const screens = createScreens(document.getElementById('screens'), {
   sfx,
   cloud,
   pwa,
+  // touch words or key names (How to Play, the "Esc =" hints)
+  isTouch: () => hud.touchMode,
   onStartNight: () => startNight(),
   // the title backdrop's island is no night, so null until one is played
   getIslandSeed: () => lastNightSeed,
@@ -878,6 +898,7 @@ let glLost = null; // the "Tap to reload" note while the browser has taken the 3
 function frame(nowMs) {
   // scheduled first so one bad frame can never stop the game for good
   requestAnimationFrame(frame);
+  backGuard.sync(); // Back's history entry follows whatever is on screen now
   const dt = Math.min(Math.max(0, (nowMs - lastFrameMs) / 1000), 0.05);
   lastFrameMs = nowMs;
   // nothing to draw on, and the night waits (paused) until the 3D is back
@@ -975,5 +996,5 @@ try {
 }
 
 if (DEBUG) {
-  window.__game = { ctx, save, cloud, pwa, startNight, endNight, get state() { return state; } };
+  window.__game = { ctx, save, cloud, pwa, screens, backGuard, startNight, endNight, get state() { return state; } };
 }
